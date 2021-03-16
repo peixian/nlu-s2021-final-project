@@ -12,34 +12,32 @@ Potential Training Dataset List
 | Veiled Toxicity Detection | Toxicity     | Potential toxicity counterpart to Social Bias Frames | https://github.com/xhan77/veiled-toxicity-detection/tree/main/resources | ?             |
 | Winograd                  | Gender (?)   | Windograd scheme, note that this is not drop in      | https://huggingface.co/datasets/wino_bias                               | mit           |
 
-Potential Usages
-------
-- 2 classifiers, one for gender bias and one for toxicity
-- each classifier fine tuned on a subset of the gender/toxicity datasets
-- training input is a (sentence/label) pair, output is a softmax
-- evaluation is input of a single sentence
-- output example is:
 
-| Sentence | Gender Bias Score | Toxicity Score |
-|----------|-------------------|----------------|
-| S_n      | GB_n              | T_n            |
-| S_n+1    | GB_n+1            | T_n+1          |
-| ...      | ...               | ...            |
+Gender Datasets
+=====================
+| Name                    | Columns                                                                        | Description                                                                                                                                          |   |
+|-------------------------|--------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|---|
+| Equity Evalution Corpus | `"Sentence", "Gender"`                                                         | Easy mapping of sentence to gender of categorical variables of `["male", "female"]`                                                                  |   |
+| Social Bias Frames      | `"sexYN", "sexReason", "sexPhrase", "targetCategory", "targetStereotype"`      | Looks for possibly gendered phrases, sexYN is if it contains a sexual reference, not towards a specific sex                                          |   |
+| MdGender Bias           | "labels", "class_type"                                                         | Labeled either as gendered or non-gendered, but with additional references on who it is                                                              |   |
+| rtGender                | Lots of different datasets, but "op_gender" and "responder_gender" can be used | Posts are provided with at least an "op_gender", which determines who wrote it, and sometimes "responder_gender", based on how people responde to it |   |
 
-- eventual goal is to find whether there is correlation between gender bias and toxicity
-Multi-label model
-----------
-It's possible the independent evaluation of both classifiers leaves out some amount of information. In reality, we'd want a database that has *both* gender bias and toxicity, although that seems to be relatively rare.
+Overall, given that these datasets make a pretty clear categorical variable of ~['male', 'female']~, I think our classifier can be trained on the specific labels. Social Bias Frames does not make a clear distinction of which type, although it might be useful as a less granular classifer.
 
-However, using the two independent classifiers (toxicity and gender bias), we could potentially supplement the datasets with additional labels, such as labeling the toxicity dataset with the gender bias classifer, resulting in something like:
+Inputs for models using EEC, MdGender, rtGender: `(gender_label, sentence)` where `gender_label` is one of `M/F`
+
+rtGender can be extended based on the `op_gender` (as it's always present), and Social Bias Frames is less granular.
 
 
-| Sentence | Original Dataset Toxicity Score | Predicted Gender Bias Score           |
-|----------|---------------------------------|---------------------------------------|
-| S_n      | T_n                             | Generated from gender bias classifier |
 
+Toxicity Datasets
+======================
+| Name  | Columns | Description                                         |
+|-------|---------|-----------------------------------------------------|
+| Jigaw | "toxic" | Simple dataset that classifies toxic `0/1`          |
+| SOLID | "label" | Dataset contains categorical variables of "NOT/OFF" |
+| OLID  | "label" | Same as SOLID                                       |
 
-While this data is not perfect, it is better than synthetic data. Using this supplemented dataset, we could finetune a third multi-label model that attempts to capture the correlation of both toxicity and gender bias. It's also possible that what we want want is not strictly the correlation, but rather the covariance of the two.
+Overall, all datasets do a simple binary classifier of some type of "offensive"/"not offensive", meaning that we could do a simple binary.
 
-## Open Questions
-- How will we handle passages? Do we want to handle passages?
+SOLID and Jigsaw both provide more information on the whether the comment is obscene, which could allow us to go deeper.
