@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 metric_name = "f1"
+AVERAGE_FSCORE_SUPPORT = "micro"
 batch_size = 8
 
 EVALUATION_DATASET = "ted_talks_iwslt"
@@ -12,6 +13,7 @@ MODEL_CHECKPOINT = "bert-base-cased"
 RUN_OUTPUTS = "./runs"
 TRAIN_LABELS_COLUMN = "offensiveYN"
 TRAIN_FEATURES_COLUMN = "post"
+
 NUM_LABELS = 3
 
 relabel_training = None
@@ -112,7 +114,7 @@ def compute_metrics(pred):
     preds, labels = pred
     preds = np.argmax(preds, axis=1)
     precision, recall, f1, _ = precision_recall_fscore_support(
-        labels, preds, average="binary"
+        labels, preds, average=AVERAGE_FSCORE_SUPPORT
     )
     acc = accuracy_score(labels, preds)
 
