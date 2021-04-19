@@ -35,21 +35,18 @@ from transformers import (
     AutoModelForSequenceClassification,
     Trainer,
     TrainingArguments,
-    EarlyStoppingCallback,
+    # EarlyStoppingCallback,
 )
 import datasets
-from datasets import load_dataset, load_metric
+from datasets import load_dataset
 import numpy as np
 import torch
 from sklearn.metrics import (
     accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
     precision_recall_fscore_support,
 )
 
-#torch.cuda.memory_summary(device=None, abbreviated=False)
+# torch.cuda.memory_summary(device=None, abbreviated=False)
 import gc
 import random
 import argparse
@@ -107,9 +104,9 @@ def loader(dataset_name, tokenizer):
         data = load_dataset(dataset_name, d_type)
         preprocess_function = dataset_preprocess.get(dataset_name, lambda x: x)
 
-        data = data.map(lambda x: {sentence_col: preprocess_function(x[sentence_col])})
+        data = data.map(lambda x: {"input_text": preprocess_function(x[sentence_col])})
         data = data.map(
-            lambda x: tokenizer(x[sentence_col], truncation=True, padding=True),
+            lambda x: tokenizer(x["input_text"], padding="max_length", truncation=True),
             batched=True,
         )
         tot.append(data)
@@ -169,6 +166,7 @@ def train(encoded_dataset, tokenizer):
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
     )
+    trainer.train()
 
     best_run = trainer.hyperparameter_search(
         n_trials=5, direction="maximize", hp_space=my_hp_space
@@ -236,10 +234,11 @@ if __name__ == "__main__":
 
         logging.info(f"Tokenizing dataset column {TRAIN_FEATURES_COLUMN}")
         dataset = dataset.map(
-            lambda x: tokenizer(x[TRAIN_FEATURES_COLUMN], truncation=True, padding=True),
+            lambda x: tokenizer(
+                x[TRAIN_FEATURES_COLUMN], truncation=True, padding=True
+            ),
             batched=True,
         )
-
 
         logging.info("Training...")
         best_run, trainer = train(dataset, tokenizer)
@@ -251,18 +250,27 @@ if __name__ == "__main__":
             eval_model = AutoModelForSequenceClassification.from_pretrained(
                 args.model_input
             )
-            trainer = Trainer(model=eval_model)
 
         tot = loader(EVALUATION_DATASET, tokenizer)
 
         for eval_dataset in tot:
             for split in eval_dataset:
-                logging.info(f"Evaluating {eval_dataset[split]}")
-                results = trainer.predict(eval_dataset[split])
+                current_dataset = eval_dataset[split]
+                logging.info(f"Evaluating {current_dataset}")
 
-                logging.info(f"Metrics: {results.metrics}")
+                tokens_tensor = torch.tensor(current_dataset["input_ids"]).to("cuda")
+                token_type_ids = torch.tensor(current_dataset["token_type_ids"]).to("cuda")
+
+                eval_model.eval()
+                eval_model.to("cuda")
+                with torch.no_grad():
+                    outputs = eval_model(tokens_tensor, token_type_ids=token_type_ids)
+                    predictions = outputs[0]
+
                 now = datetime.now()
 
                 current_time = now.strftime("%H:%M:%S")
                 filename = f"{current_time}-eval.out"
-                np.savetxt(filename, results.predictions)
+                with open(filename, "w") as outfile:
+                    for text, preds in zip(split["input_text"], predictions):
+                        outfile.write(f"{text} - {preds}")
