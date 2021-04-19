@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 
-
 metric_name = "f1"
 batch_size = 8
 
 EVALUATION_DATASET = "ted_talks_iwslt"
-TRAINING_DATASET = ""
-TRAINING_DATASET_SPLIT = ""
-DATASETS_DIR = None
+TRAINING_DATASET = "social_bias_frames"
+TRAINING_DATASET_SPLIT = None
+DATASETS_DIR = "/scratch/pw1329/datasets"
 
 MODEL_CHECKPOINT = "bert-base-cased"
 RUN_OUTPUTS = "./runs"
-TRAIN_LABELS_COLUMN = ""
-TRAIN_FEATURES_COLUMN = ""
+TRAIN_LABELS_COLUMN = "offensiveYN"
+TRAIN_FEATURES_COLUMN = "post"
 NUM_LABELS = 3
 
 relabel_training = None
-
 
 def relabel_training(offensive):
     if offensive:
@@ -53,11 +51,7 @@ import argparse
 import logging
 from datetime import datetime
 
-gc.collect()
-torch.manual_seed(0)
-random.seed(0)
-np.random.seed(0)
-torch.cuda.empty_cache()
+USE_CUDA = False
 
 ## mapping of dataset_name to dataset columns of sentences
 dataset_cols = {
@@ -129,8 +123,10 @@ def model_init():
     model = AutoModelForSequenceClassification.from_pretrained(
         MODEL_CHECKPOINT, num_labels=NUM_LABELS
     )
-    model.eval()
-    model.to("cuda")
+    model.train()
+
+    if USE_CUDA:
+        model.to("cuda")
     return model
 
 
@@ -166,7 +162,8 @@ def train(encoded_dataset, tokenizer):
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
     )
-    trainer.train()
+
+    logging.info("Constructed trainer")
 
     best_run = trainer.hyperparameter_search(
         n_trials=5, direction="maximize", hp_space=my_hp_space
@@ -175,10 +172,13 @@ def train(encoded_dataset, tokenizer):
     for n, v in best_run.hyperparameters.items():
         setattr(trainer.args, n, v)
 
+    trainer.train()
+
     return best_run, trainer
 
 
 if __name__ == "__main__":
+
 
     parser = argparse.ArgumentParser(
         prog="nlu-experiment", description="Used to train models and evaluate datasets"
@@ -203,7 +203,16 @@ if __name__ == "__main__":
         help="Where to load a model (for evaluation purposes)",
     )
 
+    parser.add_argument(
+        "-nc",
+        "--no-cuda",
+        action = "store_false",
+        default=True,
+        help="Whether to use cuda or not. Defaults to true. Turn off for debugging purposes")
+
+
     args = parser.parse_args()
+
 
     if not args.train and not args.evaluate:
         print("Not training AND not evaluating. Exiting.")
@@ -214,6 +223,21 @@ if __name__ == "__main__":
             "Asked for evaluation but we are not training a model or loading one. Please supply a model or train one."
         )
         exit(0)
+
+
+    USE_CUDA = args.no_cuda
+
+    logging.info("Initializing seeds and setting values")
+    logging.info(f"Use cuda? {USE_CUDA}")
+    gc.collect()
+    torch.manual_seed(0)
+    random.seed(0)
+    np.random.seed(0)
+    if USE_CUDA:
+        torch.cuda.empty_cache()
+
+
+
 
     logging.info("Loading tokenizer")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_CHECKPOINT, use_fast=True)
@@ -258,11 +282,18 @@ if __name__ == "__main__":
                 current_dataset = eval_dataset[split]
                 logging.info(f"Evaluating {current_dataset}")
 
-                tokens_tensor = torch.tensor(current_dataset["input_ids"]).to("cuda")
-                token_type_ids = torch.tensor(current_dataset["token_type_ids"]).to("cuda")
+                tokens_tensor = torch.tensor(current_dataset["input_ids"])
+                if USE_CUDA:
+                    tokens_tensor = tokens_tensor.to("cuda")
+
+                token_type_ids = torch.tensor(current_dataset["token_type_ids"])
+                if USE_CUDA:
+                    token_type_ids = token_type_ids.to("cuda")
 
                 eval_model.eval()
-                eval_model.to("cuda")
+                if USE_CUDA:
+                    eval_model.to("cuda")
+
                 with torch.no_grad():
                     outputs = eval_model(tokens_tensor, token_type_ids=token_type_ids)
                     predictions = outputs[0]

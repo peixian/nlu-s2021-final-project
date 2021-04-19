@@ -1,17 +1,22 @@
 #!/bin/bash
-set -euo pipefail
-IFS=$'\n\t'
+
+set -euox pipefail
 
 #SBATCH --job-name=nlu-experiment
 #SBATCH --nodes=1
-#SBATCH --mem-per-cpu=32GB
-#SBATCH --cpus-per-task=2
-#SBATCH --time=00:20:00
+#SBATCH --mem=32GB
+#SBATCH --cpus-per-task=1
+#SBATCH --time=12:00:00
 #SBATCH --gres=gpu:1
+#SBATCH --output=nlu_experiment%A_%a.out
 
 module purge
-module load cuda/11.1.74
+module load cuda/10.2.89
 module load anaconda3/2020.07
-source activate transformers-dev
 
-./experiment-script.py $@
+echo "Loading activate"
+set +u
+source activate transformers-dev
+set -u
+
+python $(realpath ./experiment-script.py) $@
