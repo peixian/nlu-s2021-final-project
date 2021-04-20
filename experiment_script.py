@@ -1,5 +1,28 @@
 #!/usr/bin/env python3
 
+"""
+usage: nlu-experiment [-h] [-mo MODEL_OUTPUT] [-t] [-e] [-mi MODEL_INPUT] [-nc] [-b BATCH_SIZE]
+                      [-ed {EMBO/biolang,empathetic_dialogues,conv_ai_3,air_dialogue,ted_talks_iwslt,tweet_eval}] [--eval-all]
+
+Used to train models and evaluate datasets
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -mo MODEL_OUTPUT, --model_output MODEL_OUTPUT
+                        Where to store a trained model
+  -t, --train           Train a model
+  -e, --evaluate        Run an evaluation (either requires --train or a model_input)
+  -mi MODEL_INPUT, --model-input MODEL_INPUT
+                        Where to load a model (for evaluation purposes)
+  -nc, --no-cuda        Whether to use cuda or not. Defaults to true. Turn off for debugging purposes
+  -b BATCH_SIZE, --batch-size BATCH_SIZE
+                        Batch size to use for training
+  -ed {EMBO/biolang,empathetic_dialogues,conv_ai_3,air_dialogue,ted_talks_iwslt,tweet_eval}, --eval-dataset {EMBO/biolang,empathetic_dialogues,conv_ai_3,air_dialogue,ted_talks_iwslt,tweet_eval}
+                        Dataset to evaluate on
+  --eval-all            Whether to run evaluation on all datasets. Overrides all other eval commands
+
+"""
+
 metric_name = "f1"
 AVERAGE_FSCORE_SUPPORT = "micro"
 batch_size = 2
@@ -17,6 +40,7 @@ TRAIN_FEATURES_COLUMN = "post"
 NUM_LABELS = 3
 
 relabel_training = None
+
 
 def relabel_training(offensive):
     if offensive:
@@ -83,7 +107,7 @@ dataset_types = {
 
 dataset_preprocess = {
     # 'NAME: <SENTENCE>'
-    #"air_dialogue": lambda x: x.split("")[-1],
+    # "air_dialogue": lambda x: x.split("")[-1],
     "ted_talks_iwslt": lambda x: x["en"],
 }
 
@@ -105,6 +129,7 @@ def loader(dataset_name, tokenizer):
 
     return tot
 
+
 def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer):
     preprocess_function = dataset_preprocess.get(dataset_name, lambda x: x)
 
@@ -114,6 +139,7 @@ def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer):
         batched=True,
     )
     return data
+
 
 def compute_metrics(pred):
     preds, labels = pred
@@ -186,7 +212,6 @@ def train(encoded_dataset, tokenizer):
 
 if __name__ == "__main__":
 
-
     parser = argparse.ArgumentParser(
         prog="nlu-experiment", description="Used to train models and evaluate datasets"
     )
@@ -213,17 +238,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "-nc",
         "--no-cuda",
-        action = "store_false",
+        action="store_false",
         default=True,
-        help="Whether to use cuda or not. Defaults to true. Turn off for debugging purposes")
-
+        help="Whether to use cuda or not. Defaults to true. Turn off for debugging purposes",
+    )
 
     parser.add_argument(
-        "-b",
-        "--batch-size",
-        default=2,
-        help="Batch size to use for training"
-        )
+        "-b", "--batch-size", default=2, help="Batch size to use for training"
+    )
 
     parser.add_argument(
         "-ed",
@@ -231,14 +253,14 @@ if __name__ == "__main__":
         default=None,
         choices=dataset_cols.keys(),
         help="Dataset to evaluate on",
-        )
+    )
     parser.add_argument(
         "--eval-all",
         action="store_true",
         default=False,
-        help="Whether to run evaluation on all datasets. Overrides all other eval commands")
+        help="Whether to run evaluation on all datasets. Overrides all other eval commands",
+    )
     args = parser.parse_args()
-
 
     if not args.train and not args.evaluate:
         print("Not training AND not evaluating. Exiting.")
@@ -249,7 +271,6 @@ if __name__ == "__main__":
             "Asked for evaluation but we are not training a model or loading one. Please supply a model or train one."
         )
         exit(0)
-
 
     USE_CUDA = args.no_cuda
 
@@ -265,7 +286,6 @@ if __name__ == "__main__":
 
     batch_size = int(args.batch_size)
     logging.info(f"Using batch_size {batch_size}")
-
 
     logging.info("Loading tokenizer")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_CHECKPOINT, use_fast=True)
@@ -306,7 +326,6 @@ if __name__ == "__main__":
         if args.eval_dataset:
             EVALUATION_DATASET = args.eval_dataset
 
-
         if args.eval_all:
             datasets_to_eval = dataset_cols.keys()
         else:
@@ -331,9 +350,11 @@ if __name__ == "__main__":
                     if USE_CUDA:
                         eval_model.to("cuda")
 
-                    #torch.cuda.memory_summary(device=None, abbreviated=False)
+                    # torch.cuda.memory_summary(device=None, abbreviated=False)
                     with torch.no_grad():
-                        outputs = eval_model(tokens_tensor, token_type_ids=token_type_ids)
+                        outputs = eval_model(
+                            tokens_tensor, token_type_ids=token_type_ids
+                        )
                         predictions = outputs[0]
 
                     now = datetime.now()
