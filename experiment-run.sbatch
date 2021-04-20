@@ -20,4 +20,4 @@ source activate transformers-dev
 set -u
 
 
-python $(realpath ./experiment-script.py) $@
+python $(realpath ./experiment_script.py) $@
