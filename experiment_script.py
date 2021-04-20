@@ -305,14 +305,14 @@ if __name__ == "__main__":
         if args.eval_dataset:
             EVALUATION_DATASET = args.eval_dataset
 
-        datasets_to_eval = []
 
         if args.eval_all:
-            pass
+            datasets_to_eval = dataset_cols.keys()
         else:
-            tot = loader(EVALUATION_DATASET, tokenizer)
-            datasets_to_eval.append(tot)
+            datasets_to_eval = [EVALUATION_DATASET]
+
         for tot in datasets_to_eval:
+            tot = loader(EVALUATION_DATASET, tokenizer)
             for eval_dataset in tot:
                 for split in eval_dataset:
                     current_dataset = eval_dataset[split]
