@@ -234,6 +234,7 @@ if __name__ == "__main__":
         )
     parser.add_argument(
         "--eval-all",
+        action="store_true",
         default=False,
         help="Whether to run evaluation on all datasets. Overrides all other eval commands")
     args = parser.parse_args()
