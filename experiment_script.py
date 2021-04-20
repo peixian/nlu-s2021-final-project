@@ -75,8 +75,28 @@ import random
 import argparse
 import logging
 from datetime import datetime
+from .relabel_funcs import relabel_social_bias_frames
 
 USE_CUDA = False
+
+
+# mapping of training datasets to their labels
+training_dataset_cols = {
+    "peixian/rtGender": "",
+    "mdGender": "",
+    "jigsaw_toxicity_pred": "toxic",
+    "social_bias_frames": "offensiveYN",
+    "peixian/equity_evaluation_corpus": "",
+}
+
+# mapping of training datasets to functions to relabel
+training_relabel_funcs = {
+    "peixian/rtGender": "",
+    "mdGender": "",
+    "jigsaw_toxicity_pred": lambda x: x,
+    "social_bias_frames": relabel_social_bias_frames,
+    "peixian/equity_evaluation_corpus": lambda x: 0 if x == "male" else 1,
+}
 
 ## mapping of dataset_name to dataset columns of sentences
 dataset_cols = {
@@ -222,6 +242,13 @@ if __name__ == "__main__":
         "-t", "--train", action="store_true", default=False, help="Train a model"
     )
     parser.add_argument(
+        "--train-dataset",
+        default=None,
+        choices=training_dataset_cols.keys(),
+        help="Which dataset to train on",
+    )
+
+    parser.add_argument(
         "-e",
         "--evaluate",
         action="store_true",
@@ -292,6 +319,8 @@ if __name__ == "__main__":
 
     if args.train:
 
+        if args.train_dataset:
+            TRAINING_DATASET = args.train_dataset
         logging.info(
             f"Loading dataset {TRAINING_DATASET} with split {TRAINING_DATASET_SPLIT}"
         )
