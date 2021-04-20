@@ -2,7 +2,7 @@
 
 metric_name = "f1"
 AVERAGE_FSCORE_SUPPORT = "micro"
-batch_size = 8
+batch_size = 2
 
 EVALUATION_DATASET = "ted_talks_iwslt"
 TRAINING_DATASET = "social_bias_frames"
@@ -17,6 +17,7 @@ TRAIN_FEATURES_COLUMN = "post"
 NUM_LABELS = 3
 
 relabel_training = None
+
 
 def relabel_training(offensive):
     if offensive:
@@ -181,7 +182,6 @@ def train(encoded_dataset, tokenizer):
 
 if __name__ == "__main__":
 
-
     parser = argparse.ArgumentParser(
         prog="nlu-experiment", description="Used to train models and evaluate datasets"
     )
@@ -208,13 +208,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "-nc",
         "--no-cuda",
-        action = "store_false",
+        action="store_false",
         default=True,
-        help="Whether to use cuda or not. Defaults to true. Turn off for debugging purposes")
+        help="Whether to use cuda or not. Defaults to true. Turn off for debugging purposes",
+    )
 
+    parser.add_argument(
+        "-b", "--batch-size", default=2, help="Batch size to use for training"
+    )
 
     args = parser.parse_args()
-
 
     if not args.train and not args.evaluate:
         print("Not training AND not evaluating. Exiting.")
@@ -226,9 +229,9 @@ if __name__ == "__main__":
         )
         exit(0)
 
-
     USE_CUDA = args.no_cuda
 
+    logging.basicConfig(encoding="utf-8", level=logging.INFO)
     logging.info("Initializing seeds and setting values")
     logging.info(f"Use cuda? {USE_CUDA}")
     gc.collect()
@@ -238,8 +241,8 @@ if __name__ == "__main__":
     if USE_CUDA:
         torch.cuda.empty_cache()
 
-
-
+    batch_size = int(args.batch_size)
+    logging.info(f"Using batch_size {batch_size}")
 
     logging.info("Loading tokenizer")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_CHECKPOINT, use_fast=True)
