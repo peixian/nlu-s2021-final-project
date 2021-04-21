@@ -69,7 +69,7 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
-
+from pprint import pformat
 import gc
 import random
 import argparse
@@ -242,6 +242,7 @@ if __name__ == "__main__":
         "-t", "--train", action="store_true", default=False, help="Train a model"
     )
     parser.add_argument(
+        "-td",
         "--train-dataset",
         default=None,
         choices=training_dataset_cols.keys(),
@@ -364,9 +365,12 @@ if __name__ == "__main__":
             tot = loader(EVALUATION_DATASET, tokenizer)
             for eval_dataset in tot:
                 for split in eval_dataset:
+                    torch.cuda.empty_cache()
+
                     current_dataset = eval_dataset[split]
                     logging.info(f"Evaluating {current_dataset}")
-
+                    logging.info("Torch memory dump below")
+                    logging.info(pformat(torch.cuda.memory_stats(device=None)))
                     tokens_tensor = torch.tensor(current_dataset["input_ids"])
                     if USE_CUDA:
                         tokens_tensor = tokens_tensor.to("cuda")
