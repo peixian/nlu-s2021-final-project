@@ -302,7 +302,7 @@ if __name__ == "__main__":
 
     USE_CUDA = args.no_cuda
 
-    logging.basicConfig(encoding="utf-8", level=logging.INFO)
+    logging.basicConfig(level=logging.INFO)
     logging.info("Initializing seeds and setting values")
     logging.info(f"Use cuda? {USE_CUDA}")
     gc.collect()
@@ -379,6 +379,7 @@ if __name__ == "__main__":
                     if USE_CUDA:
                         token_type_ids = token_type_ids.to("cuda")
 
+                    logging.info("setting model")
                     eval_model.eval()
                     if USE_CUDA:
                         eval_model.to("cuda")
@@ -386,12 +387,14 @@ if __name__ == "__main__":
                     del current_dataset
                     torch.cuda.empty_cache()
                     # torch.cuda.memory_summary(device=None, abbreviated=False)
+                    logging.info("evaluating")
                     with torch.no_grad():
                         outputs = eval_model(
                             tokens_tensor, token_type_ids=token_type_ids
                         )
                         predictions = outputs[0]
 
+                    logging.info("predictions complete, writing to file")
                     now = datetime.now()
 
                     current_time = now.strftime("%H:%M:%S")
