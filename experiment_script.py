@@ -75,7 +75,7 @@ import random
 import argparse
 import logging
 from datetime import datetime
-from .relabel_funcs import relabel_social_bias_frames
+from relabel_funcs import relabel_social_bias_frames
 
 USE_CUDA = False
 
@@ -383,6 +383,8 @@ if __name__ == "__main__":
                     if USE_CUDA:
                         eval_model.to("cuda")
 
+                    del current_dataset
+                    torch.cuda.empty_cache()
                     # torch.cuda.memory_summary(device=None, abbreviated=False)
                     with torch.no_grad():
                         outputs = eval_model(
