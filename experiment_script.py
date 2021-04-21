@@ -361,8 +361,8 @@ if __name__ == "__main__":
         else:
             datasets_to_eval = [EVALUATION_DATASET]
 
-        for tot in datasets_to_eval:
-            tot = loader(EVALUATION_DATASET, tokenizer)
+        for dataset_name in datasets_to_eval:
+            tot = loader(dataset_name, tokenizer)
             for eval_dataset in tot:
                 for split in eval_dataset:
                     torch.cuda.empty_cache()
@@ -395,7 +395,7 @@ if __name__ == "__main__":
                     now = datetime.now()
 
                     current_time = now.strftime("%H:%M:%S")
-                    filename = f"{current_time}-eval.out"
+                    filename = f"{current_time}-{dataset_name}-{split}-eval.out"
                     with open(filename, "w") as outfile:
                         for text, preds in zip(split["input_text"], predictions):
                             outfile.write(f"{text} - {preds}")
