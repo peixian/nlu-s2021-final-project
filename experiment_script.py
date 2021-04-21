@@ -397,5 +397,6 @@ if __name__ == "__main__":
                     current_time = now.strftime("%H:%M:%S")
                     filename = f"{current_time}-{dataset_name}-{split}-eval.out"
                     with open(filename, "w") as outfile:
+                        outfile.write(f"args: {args}")
                         for text, preds in zip(split["input_text"], predictions):
                             outfile.write(f"{text} - {preds}")
