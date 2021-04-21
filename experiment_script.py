@@ -229,6 +229,13 @@ def train(encoded_dataset, tokenizer):
 
     return best_run, trainer
 
+def make_chunks(data1, data2, chunk_size):
+    while data1 and data2:
+        chunk1, data1 = data1[:chunk_size], data1[chunk_size:]
+        chunk2, data2 = data2[:chunk_size], data2[chunk_size:]
+
+        yield chunk1, chunk2
+
 
 if __name__ == "__main__":
 
@@ -388,11 +395,16 @@ if __name__ == "__main__":
                     torch.cuda.empty_cache()
                     # torch.cuda.memory_summary(device=None, abbreviated=False)
                     logging.info("evaluating")
+                    predictions = []
+                    chunk = 0
                     with torch.no_grad():
-                        outputs = eval_model(
-                            tokens_tensor, token_type_ids=token_type_ids
-                        )
-                        predictions = outputs[0]
+                        for tokens_tensor_chunk, token_type_ids_chunk in make_chunks(tokens_tensor, token_type_ids):
+                            outputs = eval_model(
+                                tokens_tensor_chunk, token_type_ids=token_type_ids_chunk
+                            )
+                            predictions += outputs[0]
+                            chunk += 1
+                            logging.info(f"finished chunk {chunk} - total predictions = {len(predictions)}")
 
                     logging.info("predictions complete, writing to file")
                     now = datetime.now()
