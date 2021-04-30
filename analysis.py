@@ -52,5 +52,5 @@ if __name__ == "__main__":
     if args.input2:
         df2 = read_outfile(args.input2)
         print(df2.describe())
-        combined_df = df1.join(df2, on="sentence", lsuffix="first_", rsuffix="second_")
+        combined_df = df1.merge(df2, on="sentence", suffixes=('_df1', '_df2'))
         print(combined_df.cov())
