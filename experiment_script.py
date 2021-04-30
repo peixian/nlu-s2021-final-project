@@ -74,8 +74,6 @@ import argparse
 import logging
 from datetime import datetime
 from relabel_funcs import relabel_social_bias_frames
-import os
-
 import time
 
 
@@ -371,35 +369,45 @@ if __name__ == "__main__":
                     logging.info("evaluating")
                     predictions = []
                     chunk = 0
-
-                    with torch.no_grad():
-                        start_time = time.time()
-                        for tokens_tensor_chunk, token_type_ids_chunk in make_chunks(
-                            tokens_tensor, token_type_ids, 100
-                        ):
-                            tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
-                            token_type_ids_chunk = torch.tensor(token_type_ids_chunk)
-                            outputs = eval_model(
-                                tokens_tensor_chunk, token_type_ids=token_type_ids_chunk
-                            )
-                            predictions += outputs[0]
-                            logging.info(
-                                f"finished chunk {chunk} - total predictions = {len(predictions)}"
-                            )
-                        end_time = time.time()
-                        logging.info(f"Time for evaluation {end_time - start_time}")
-
-                    logits = torch.stack((predictions))
-                    logits = torch.argmax(logits, 1)
-                    logging.info(logits)
-
-                    logging.info("predictions complete, writing to file")
+                    logging.info("Opening file and writing")
                     now = datetime.now()
                     current_time = now.strftime("%H:%M:%S")
+                    filename = f"{current_time}-{dataset_name}-{split}-partial-predictions-eval.out"
+                    logging.info(f"Opening file {filename} to write results")
+                    with open(filename, "w") as outfile:
+                        outfile.write("PARTIAL PREDICTIONS BELOW\n")
+                        outfile.write(f"args: {args}\n")
+                        with torch.no_grad():
+                            start_time = time.time()
+                            for (
+                                tokens_tensor_chunk,
+                                token_type_ids_chunk,
+                            ) in make_chunks(tokens_tensor, token_type_ids, 100):
+                                tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
+                                token_type_ids_chunk = torch.tensor(
+                                    token_type_ids_chunk
+                                )
+                                outputs = eval_model(
+                                    tokens_tensor_chunk,
+                                    token_type_ids=token_type_ids_chunk,
+                                )
+                                predictions += outputs[0]
+                                logging.info(
+                                    f"finished chunk {chunk} - total predictions = {len(predictions)}, writing predictions"
+                                )
+                                # output is [[123, 123, 123], [123, 123, 123]]
+                                for token_ids, preds in zip(
+                                    token_type_ids_chunk, outputs[0]
+                                ):
+                                    outfile.write(f"{token_ids} - {preds}\n")
+
+                            end_time = time.time()
+                            logging.info(f"Time for evaluation {end_time - start_time}")
+
                     filename = f"{current_time}-{dataset_name}-{split}-eval.out"
                     with open(filename, "w") as outfile:
+                        outfile.write("FULL PREDICTIONS BELOW\n")
                         outfile.write(f"args: {args}\n")
-                        outfile.write(f"predictions: {predictions}\n")
                         for text, preds in zip(
                             current_dataset["input_text"], predictions
                         ):
