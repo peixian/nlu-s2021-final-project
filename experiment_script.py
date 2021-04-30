@@ -75,7 +75,7 @@ import logging
 from datetime import datetime
 from relabel_funcs import relabel_social_bias_frames
 USE_CUDA = False
-
+import time
 
 # mapping of training datasets to their labels
 training_dataset_cols = {
@@ -350,19 +350,14 @@ if __name__ == "__main__":
                     logging.info("setting model")
                     eval_model.eval()
 
-                   # if USE_CUDA:
-                   #     token_type_ids = token_type_ids.to("cuda")
-                   #     tokens_tensor = tokens_tensors.to("cuda")
-                   #     eval_model.to("cuda")
 
-                    del current_dataset
                     torch.cuda.empty_cache()
-                    # torch.cuda.memory_summary(device=None, abbreviated=False)
                     logging.info("evaluating")
                     predictions = []
                     chunk = 0
 
                     with torch.no_grad():
+                        start_time = time.time()
                         for tokens_tensor_chunk, token_type_ids_chunk in make_chunks(tokens_tensor, token_type_ids, 100):
                             tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
                             token_type_ids_chunk = torch.tensor(token_type_ids_chunk)
@@ -371,6 +366,12 @@ if __name__ == "__main__":
                             )
                             predictions += outputs[0]
                             logging.info(f"finished chunk {chunk} - total predictions = {len(predictions)}")
+                        end_time = time.time()
+                        logging.info(f"Time for evaluation {end_time - start_time}")
+                    
+                    logits = torch.stack((predictions))
+                    logits = torch.argmax(logits, 1)
+                    logging.info(logits)
 
                     logging.info("predictions complete, writing to file")
                     now = datetime.now()
@@ -378,6 +379,7 @@ if __name__ == "__main__":
                     filename = f"{current_time}-{dataset_name}-{split}-eval.out"
                     with open(filename, "w") as outfile:
                         outfile.write(f"args: {args}")
-                        for text, preds in zip(split["input_text"], predictions):
+                        outfile.write(f"predictions: {predictions}")
+                        for text, preds in zip(current_dataset["input_text"], predictions):
                             outfile.write(f"{text} - {preds}")
 
