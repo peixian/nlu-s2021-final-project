@@ -399,7 +399,7 @@ if __name__ == "__main__":
                                 for token_ids, preds in zip(
                                     token_type_ids_chunk, outputs[0]
                                 ):
-                                    outfile.write(f"{token_ids} | {preds}\n")
+                                    outfile.write(f"{tokens_tensor_chunk} | {preds}\n")
 
                             end_time = time.time()
                             logging.info(f"Time for evaluation {end_time - start_time}")
