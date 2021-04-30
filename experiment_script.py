@@ -30,7 +30,7 @@ EVALUATION_DATASET = "air_dialogue"
 TRAINING_DATASET = "social_bias_frames"
 TRAINING_DATASET_SPLIT = None
 DATASETS_DIR = "/scratch/pw1329/datasets"
-#MODEL_CHECKPOINT = "bert-base-cased"
+# MODEL_CHECKPOINT = "bert-base-cased"
 MODEL_CHECKPOINT = "/scratch/pw1329/nlu-s2021-final-project/models/rtgender-model-new/"
 RUN_OUTPUTS = ""
 TRAIN_LABELS_COLUMN = "offensiveYN"
@@ -48,7 +48,7 @@ def relabel_training(offensive):
         else:
             return 2
     else:
-    return 0
+        return 0
 
 
 from transformers import (
@@ -74,9 +74,12 @@ import argparse
 import logging
 from datetime import datetime
 from relabel_funcs import relabel_social_bias_frames
-USE_CUDA = False
+import os
+
 import time
 
+
+USE_CUDA = False
 # mapping of training datasets to their labels
 training_dataset_cols = {
     "peixian/rtGender": "",
@@ -133,19 +136,22 @@ dataset_preprocess = {
 }
 
 
-def loader(dataset_name, tokenizer):
+def loader(dataset_name, tokenizer, cache_dir):
     assert dataset_name in dataset_cols
     sentence_col = dataset_cols[dataset_name]
     d_types = dataset_types.get(dataset_name, None)
     tot = []
+
+    logging.info(f"Using cache dir {cache_dir}")
     if d_types:
         for d_type in d_types:
-            data = load_dataset(dataset_name, d_type, cache_dir="/scratch/amq259/datasets")
+            data = load_dataset(dataset_name, d_type, cache_dir=cache_dir)
             tot.append(_preprocess_dataset(dataset_name, data, sentence_col, tokenizer))
     else:
-    data = load_dataset(dataset_name, cache_dir="/scratch/amq259/datasets")
+        data = load_dataset(dataset_name, cache_dir=cache_dir)
         tot.append(_preprocess_dataset(dataset_name, data, sentence_col, tokenizer))
     return tot
+
 
 def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer):
     preprocess_function = dataset_preprocess.get(dataset_name, lambda x: x)
@@ -169,7 +175,7 @@ def compute_metrics(pred):
 
 def model_init():
     model = AutoModelForSequenceClassification.from_pretrained(
-        MODEL_CHECKPOINT, num_labels=NUM_LABELS
+        MODEL_CHECKPOINT, num_labels=4
     )
     model.train()
     if USE_CUDA:
@@ -179,7 +185,7 @@ def model_init():
 
 def my_hp_space(trial):
     return {
-    "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True),
+        "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True),
         "num_train_epochs": trial.suggest_int("num_train_epochs", 1, 5),
         "seed": trial.suggest_int("seed", 1, 40),
         "per_device_train_batch_size": trial.suggest_categorical(
@@ -223,6 +229,7 @@ def make_chunks(data1, data2, chunk_size):
         chunk2, data2 = data2[:chunk_size], data2[chunk_size:]
         yield chunk1, chunk2
 
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
@@ -236,27 +243,27 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-td",
-    "--train-dataset",
+        "--train-dataset",
         default=None,
         choices=training_dataset_cols.keys(),
         help="Which dataset to train on",
     )
     parser.add_argument(
         "-e",
-    "--evaluate",
+        "--evaluate",
         action="store_true",
         default=False,
         help="Run an evaluation (either requires --train or a model_input)",
     )
     parser.add_argument(
         "-mi",
-    "--model-input",
+        "--model-input",
         default="",
         help="Where to load a model (for evaluation purposes)",
     )
     parser.add_argument(
         "-nc",
-    "--no-cuda",
+        "--no-cuda",
         action="store_false",
         default=True,
         help="Whether to use cuda or not. Defaults to true. Turn off for debugging purposes",
@@ -264,9 +271,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "-b", "--batch-size", default=2, help="Batch size to use for training"
     )
+
+    parser.add_argument(
+        "-cd",
+        "--cache-dir",
+        default=None,
+        required=True,
+        help="Cache dir to use for datasets to download into. Usually best to set to the value of $SCRATCH/datasets",
+    )
+
     parser.add_argument(
         "-ed",
-    "--eval-dataset",
+        "--eval-dataset",
         default=None,
         choices=dataset_cols.keys(),
         help="Dataset to evaluate on",
@@ -285,7 +301,7 @@ if __name__ == "__main__":
         print(
             "Asked for evaluation but we are not training a model or loading one. Please supply a model or train one."
         )
-    exit(0)
+
     USE_CUDA = args.no_cuda
     logging.basicConfig(level=logging.INFO)
     logging.info("Initializing seeds and setting values")
@@ -306,21 +322,22 @@ if __name__ == "__main__":
         logging.info(
             f"Loading dataset {TRAINING_DATASET} with split {TRAINING_DATASET_SPLIT}"
         )
-    dataset = load_dataset(
+        dataset = load_dataset(
             TRAINING_DATASET, split=TRAINING_DATASET_SPLIT, cache_dir=DATASETS_DIR
         )
-    logging.info(f"Relabeling dataset column {TRAIN_LABELS_COLUMN}")
+        logging.info(f"Relabeling dataset column {TRAIN_LABELS_COLUMN}")
         dataset = dataset.map(
             lambda x: {"labels": relabel_training(x[TRAIN_LABELS_COLUMN])}
         )
-    logging.info(f"Tokenizing dataset column {TRAIN_FEATURES_COLUMN}")
+        logging.info(f"Tokenizing dataset column {TRAIN_FEATURES_COLUMN}")
         dataset = dataset.map(
             lambda x: tokenizer(
                 x[TRAIN_FEATURES_COLUMN], truncation=True, padding=True
             ),
             batched=True,
         )
-    logging.info("Training...")
+
+        logging.info("Training...")
         best_run, trainer = train(dataset, tokenizer)
         trainer.save_model(args.model_output)
     if args.evaluate:
@@ -329,14 +346,14 @@ if __name__ == "__main__":
             eval_model = AutoModelForSequenceClassification.from_pretrained(
                 args.model_input
             )
-    if args.eval_dataset:
+        if args.eval_dataset:
             EVALUATION_DATASET = args.eval_dataset
         if args.eval_all:
             datasets_to_eval = dataset_cols.keys()
         else:
             datasets_to_eval = [EVALUATION_DATASET]
         for dataset_name in datasets_to_eval:
-            tot = loader(dataset_name, tokenizer)
+            tot = loader(dataset_name, tokenizer, args.cache_dir)
             for eval_dataset in tot:
                 for split in eval_dataset:
                     torch.cuda.empty_cache()
@@ -350,7 +367,6 @@ if __name__ == "__main__":
                     logging.info("setting model")
                     eval_model.eval()
 
-
                     torch.cuda.empty_cache()
                     logging.info("evaluating")
                     predictions = []
@@ -358,17 +374,21 @@ if __name__ == "__main__":
 
                     with torch.no_grad():
                         start_time = time.time()
-                        for tokens_tensor_chunk, token_type_ids_chunk in make_chunks(tokens_tensor, token_type_ids, 100):
+                        for tokens_tensor_chunk, token_type_ids_chunk in make_chunks(
+                            tokens_tensor, token_type_ids, 100
+                        ):
                             tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
                             token_type_ids_chunk = torch.tensor(token_type_ids_chunk)
                             outputs = eval_model(
                                 tokens_tensor_chunk, token_type_ids=token_type_ids_chunk
                             )
                             predictions += outputs[0]
-                            logging.info(f"finished chunk {chunk} - total predictions = {len(predictions)}")
+                            logging.info(
+                                f"finished chunk {chunk} - total predictions = {len(predictions)}"
+                            )
                         end_time = time.time()
                         logging.info(f"Time for evaluation {end_time - start_time}")
-                    
+
                     logits = torch.stack((predictions))
                     logits = torch.argmax(logits, 1)
                     logging.info(logits)
@@ -378,8 +398,9 @@ if __name__ == "__main__":
                     current_time = now.strftime("%H:%M:%S")
                     filename = f"{current_time}-{dataset_name}-{split}-eval.out"
                     with open(filename, "w") as outfile:
-                        outfile.write(f"args: {args}")
-                        outfile.write(f"predictions: {predictions}")
-                        for text, preds in zip(current_dataset["input_text"], predictions):
-                            outfile.write(f"{text} - {preds}")
-
+                        outfile.write(f"args: {args}\n")
+                        outfile.write(f"predictions: {predictions}\n")
+                        for text, preds in zip(
+                            current_dataset["input_text"], predictions
+                        ):
+                            outfile.write(f"{text} - {preds}\n")
