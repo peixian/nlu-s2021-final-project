@@ -35,6 +35,13 @@ def read_outfile(outfile_name, delimiter="|", skiprows=2, split_tensor=True):
     return df
 
 
+def read_dfs(file1, file2, suffixes=("_df1", "_df2")):
+    df1 = read_outfile(file1)
+    df2 = read_outfile(file2)
+    combined_df = df1.merge(df2, on="sentence", suffixes=suffixes)
+    return df1, df2, combined_df
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -52,5 +59,5 @@ if __name__ == "__main__":
     if args.input2:
         df2 = read_outfile(args.input2)
         print(df2.describe())
-        combined_df = df1.merge(df2, on="sentence", suffixes=('_df1', '_df2'))
+        combined_df = df1.merge(df2, on="sentence", suffixes=("_df1", "_df2"))
         print(combined_df.cov())
