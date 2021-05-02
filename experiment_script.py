@@ -33,22 +33,9 @@ DATASETS_DIR = "/scratch/amq259/datasets"
 # MODEL_CHECKPOINT = "bert-base-cased"
 MODEL_CHECKPOINT = "/scratch/pw1329/nlu-s2021-final-project/models/rtgender-model-new/"
 RUN_OUTPUTS = ""
-TRAIN_LABELS_COLUMN = "offensiveYN"
 TRAIN_FEATURES_COLUMN = "post"
 NUM_LABELS = 3
 relabel_training = None
-
-
-def relabel_training(offensive):
-    if offensive:
-        if offensive == "0.0":
-            return 0
-        elif offensive == "0.5":
-            return 1
-        else:
-            return 2
-    else:
-        return 0
 
 
 from transformers import (
@@ -73,9 +60,10 @@ import random
 import argparse
 import logging
 from datetime import datetime
-from relabel_funcs import relabel_social_bias_frames
+from relabel_funcs import relabel_social_bias_frames, relabel_rt_gender
 import time
 
+logging.basicConfig(level=logging.INFO)
 
 USE_CUDA = False
 # mapping of training datasets to their labels
@@ -90,7 +78,7 @@ training_dataset_cols = {
 
 # mapping of training datasets to functions to relabel
 training_relabel_funcs = {
-    "peixian/rtGender": "",
+    "peixian/rtGender": relabel_rt_gender,
     "mdGender": "",
     "jigsaw_toxicity_pred": lambda x: x,
     "social_bias_frames": relabel_social_bias_frames,
@@ -313,7 +301,7 @@ if __name__ == "__main__":
         )
 
     USE_CUDA = args.no_cuda
-    logging.basicConfig(level=logging.INFO)
+
     logging.info("Initializing seeds and setting values")
     logging.info(f"Use cuda? {USE_CUDA}")
     gc.collect()
@@ -325,7 +313,7 @@ if __name__ == "__main__":
     batch_size = int(args.batch_size)
     logging.info(f"Using batch_size {batch_size}")
     logging.info("Loading tokenizer")
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_CHECKPOINT, use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased", use_fast=True)
     if args.train:
         if args.train_dataset:
             TRAINING_DATASET = args.train_dataset

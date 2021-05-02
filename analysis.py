@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import pandas as pd
-
+import torch.tensor as pt_tensor
 
 def tensor_split_mapper(input_tensor):
     # for number in [123, 123, 123]:
@@ -10,7 +10,7 @@ def tensor_split_mapper(input_tensor):
     # apply for all N
 
     # return a dictionary for each row
-    input_parsed_tensor = eval(input_tensor)
+    input_parsed_tensor = input_tensor
     prediction_counts = len(input_parsed_tensor)
     out = {}
     for prediction_num in range(0, prediction_counts):
@@ -28,11 +28,19 @@ def read_outfile(outfile_name, delimiter="|", skiprows=2, split_tensor=True):
     df["predictions"] = df["predictions"].apply(
         lambda x: x.replace("tensor(", "").replace(")", "")
     )
+    df["predictions"] = df["predictions"].map(lambda x: pt_tensor(eval(x)))
     if split_tensor:
         df = df.join(
             pd.DataFrame(df["predictions"].apply(tensor_split_mapper).tolist())
         )
     return df
+
+
+def read_dfs(file1, file2, suffixes=("_df1", "_df2"), split_tensor=False):
+    df1 = read_outfile(file1, split_tensor=split_tensor)
+    df2 = read_outfile(file2, split_tensor=split_tensor)
+    combined_df = df1.merge(df2, on="sentence", suffixes=suffixes)
+    return df1, df2, combined_df
 
 
 if __name__ == "__main__":
@@ -52,5 +60,5 @@ if __name__ == "__main__":
     if args.input2:
         df2 = read_outfile(args.input2)
         print(df2.describe())
-        combined_df = df1.merge(df2, on="sentence", suffixes=('_df1', '_df2'))
+        combined_df = df1.merge(df2, on="sentence", suffixes=("_df1", "_df2"))
         print(combined_df.cov())
