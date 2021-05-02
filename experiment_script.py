@@ -29,7 +29,7 @@ batch_size = 2
 EVALUATION_DATASET = "air_dialogue"
 TRAINING_DATASET = "social_bias_frames"
 TRAINING_DATASET_SPLIT = None
-DATASETS_DIR = "/scratch/pw1329/datasets"
+DATASETS_DIR = "/scratch/amq259/datasets"
 # MODEL_CHECKPOINT = "bert-base-cased"
 MODEL_CHECKPOINT = "/scratch/pw1329/nlu-s2021-final-project/models/rtgender-model-new/"
 RUN_OUTPUTS = ""
@@ -60,7 +60,7 @@ from transformers import (
 )
 
 
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 import numpy as np
 import torch
 from sklearn.metrics import (
@@ -134,12 +134,18 @@ dataset_preprocess = {
 }
 
 
+cols_removed = {
+    "air_dialogue": ["action", "correct_sample", "dialogue", "expected_action", "intent", "search_info", "timestamps"]
+}
+
+def clean_text():
+    pass
+
 def loader(dataset_name, tokenizer, cache_dir):
     assert dataset_name in dataset_cols
     sentence_col = dataset_cols[dataset_name]
     d_types = dataset_types.get(dataset_name, None)
     tot = []
-
     logging.info(f"Using cache dir {cache_dir}")
     if d_types:
         for d_type in d_types:
@@ -154,6 +160,12 @@ def loader(dataset_name, tokenizer, cache_dir):
 def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer):
     preprocess_function = dataset_preprocess.get(dataset_name, lambda x: x)
     data = data.map(lambda x: {"input_text": preprocess_function(x[sentence_col])})
+    first_length = len(data['train']['input_text'])
+    if dataset_name in set(["air_dialogue"]):
+        for split in data:
+            data[split].remove_columns(cols_removed[dataset_name])
+            data[split] = Dataset.from_dict({'input_text': np.concatenate(data[split]['input_text']).ravel().tolist()})
+    assert len(data['train']['input_text']) >= first_length 
     data = data.map(
         lambda x: tokenizer(x["input_text"], padding="max_length", truncation=True),
         batched=True,
@@ -339,7 +351,7 @@ if __name__ == "__main__":
         best_run, trainer = train(dataset, tokenizer)
         trainer.save_model(args.model_output)
     if args.evaluate:
-        logging.info(f"Evaluating with dataset {EVALUATION_DATASET}")
+        logging.info(f"Evaluating with dataset {args.eval_dataset}")
         if args.model_input:
             eval_model = AutoModelForSequenceClassification.from_pretrained(
                 args.model_input
