@@ -7,26 +7,36 @@ def _softmax_and_relabel(predictions, categorical_labels):
     return sm, categorical_labels[sm.argmax().item()]
 
 
-def return_social_bias_frames(predictions):
+def return_social_bias_frames_offensiveness(predictions):
     # predictions for social bias frames is a 3 size vector with [not offensive, maybe offensive, offensive]
     # returns a tuple of a score and a categorical variable
-    categorical_labels = ["Not", "Maybe", "Yes"]
+    categorical_labels = ["Not Offensive", "Maybe Offensive", "Offensive"]
     softmax_preds, category = _softmax_and_relabel(predictions, categorical_labels)
     # if maybe has the highest value, score is 0
     # otherwise, take the difference between Yes and No
-    if category == "Maybe":
+    if category == "Maybe Offensive":
         return 0, category
     else:
         return softmax_preds[2] - softmax_preds[0], category
 
 def return_rt_gender(predictions):
-    # predictions for social bias frames is a 3 size vector with [not offensive, maybe offensive, offensive]
-    # returns a tuple of a score and a categorical variable
-    categorical_labels = ["Negative", "Neutral", "Mixed", "Positive"]
+
+    categorical_labels = ["Man", "Woman"]
     softmax_preds, category = _softmax_and_relabel(predictions, categorical_labels)
-    # if maybe has the highest value, score is 0
-    # otherwise, take the difference between Yes and No
-    if category == "Maybe":
-        return 0, category
-    else:
-        return softmax_preds[2] - softmax_preds[0], category
+
+    return softmax_preds[1] - softmax_preds[0], category
+
+def return_jigsaw_toxicity(predictions):
+
+    categorical_labels = ["Not Toxic", "Toxic"]
+    softmax_preds, category = _softmax_and_relabel(predictions, categorical_labels)
+
+    return softmax_preds[1] - softmax_preds[0], category
+
+
+def return_mdgender_convai_binary(predictions):
+
+    categorical_labels = ["Female", "Male"]
+    softmax_preds, category = _softmax_and_relabel(predictions, categorical_labels)
+
+    return softmax_preds[1] - softmax_preds[0], category
