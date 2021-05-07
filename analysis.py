@@ -94,7 +94,7 @@ if __name__ == "__main__":
 
         df1_describe = df1["scores_1"].describe()
 
-        output_file.write(f"Description of scores for data at {args.input1}\n{df1_describe}\n\n")
+        output_file.write(f"Description of scores (unscaled) for data at {args.input1}\n{df1_describe}\n\n")
 
         if args.input2:
             df2 = read_outfile(args.input2)
@@ -102,25 +102,25 @@ if __name__ == "__main__":
 
             df2_temp = df2["predictions"].map(rfunc_2)
             df2_temp = pd.DataFrame(df2_temp.to_list(), columns=["scores_2", "category_2"])
-            df2_temp["scores_2"] = df1_temp["scores_2"].map(lambda x: x.item())
+            df2_temp["scores_2"] = df2_temp["scores_2"].map(lambda x: x.item())
             df2 = df2.join(df2_temp)
 
             df2_describe = df2["scores_2"].describe()
 
-            output_file.write(f"Description of scores for data at {args.input2}\n{df2_describe}\n\n")
+            output_file.write(f"Description of scores (unscaled) for data at {args.input2}\n{df2_describe}\n\n")
 
             combined_df = df1.merge(df2, on="sentence", suffixes=("_df1", "_df2"))
 
-            std_scaler = StandardScaler()
-            scores_df = combined_df[["scores_df1", "scores_df2"]]
-            scores_df = pd.DataFrame(std_scaler.fit_transform(scores_df), columns=scores_df.columns)
+            # std_scaler = StandardScaler()
+            scores_df = combined_df[["scores_1", "scores_2"]]
+            # scores_df = pd.DataFrame(std_scaler.fit_transform(scores_df), columns=scores_df.columns)
 
             corr_df = scores_df.corr()
             output_file.write(f"Correlations:\n{corr_df}\n\n")
 
-            contingency = pd.crosstab(combined_df["category_df1"], combined_df["category_df2"])
+            contingency = pd.crosstab(combined_df["category_1"], combined_df["category_2"])
             output_file.write(f"Contingency matrix:\n{contingency}\n\n")
 
-            chi2_test = chi2_contingency(contingency)
-            output_file.write(f"Chi^2 test results:\n{chi2_test}")
+            _, p, _, _ = chi2_contingency(contingency)
+            output_file.write(f"p-value from a Chi^2 test is:\n{p}")
 

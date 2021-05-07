@@ -1,0 +1,35 @@
+Description of scores (unscaled) for data at results/final/Cameron_BERT-Jigsaw-20:05:06-ted_talks_iwslt-train-eval.out
+count    2966.000000
+mean       -0.101467
+std         0.912698
+min        -0.999946
+25%        -0.995036
+50%        -0.856688
+75%         0.883761
+max         0.992353
+Name: scores_1, dtype: float64
+
+Description of scores (unscaled) for data at results/final/Cameron_BERT-SBIC-offensive-20:41:00-ted_talks_iwslt-train-eval.out
+count    2966.000000
+mean       -0.958887
+std         0.202286
+min        -0.999085
+25%        -0.993395
+50%        -0.988044
+75%        -0.982916
+max         0.993377
+Name: scores_2, dtype: float64
+
+Correlations:
+          scores_1  scores_2
+scores_1  1.000000 -0.049369
+scores_2 -0.049369  1.000000
+
+Contingency matrix:
+category_2  Not Offensive  Offensive
+category_1                          
+Not Toxic            1526         24
+Toxic                1408          8
+
+p-value from a Chi^2 test is:
+0.015883798122452567
