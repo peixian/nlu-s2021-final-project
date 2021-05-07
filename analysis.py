@@ -111,9 +111,9 @@ if __name__ == "__main__":
 
             combined_df = df1.merge(df2, on="sentence", suffixes=("_df1", "_df2"))
 
-            # std_scaler = StandardScaler()
+            std_scaler = StandardScaler()
             scores_df = combined_df[["scores_1", "scores_2"]]
-            # scores_df = pd.DataFrame(std_scaler.fit_transform(scores_df), columns=scores_df.columns)
+            scores_df = pd.DataFrame(std_scaler.fit_transform(scores_df), columns=scores_df.columns)
 
             corr_df = scores_df.corr()
             output_file.write(f"Correlations:\n{corr_df}\n\n")
