@@ -68,7 +68,7 @@ from relabel_funcs import (
 )
 import time
 import spacy
-
+from text_preprocess import keep_sentence, normalize
 
 nlp = spacy.load("en_core_web_sm")
 logging.basicConfig(level=logging.INFO)
@@ -224,13 +224,19 @@ def loader(dataset_name, tokenizer, cache_dir):
 
 def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir=""):
     preprocess_function = dataset_preprocess.get(dataset_name, lambda x: x)
+    logging.info(f"CONCATE")
     data = concate(dataset_name, data, cache_dir)
+    logging.info(f"MAP")
     data = data.map(lambda x: {"input_text": preprocess_function(x[sentence_col])})
+
     data["train"] = data["train"].remove_columns(cols_removed[dataset_name])
     if dataset_name == "air_dialogue":
         data['train'] = Dataset.from_dict(
             {"input_text": np.concatenate(data["train"]["input_text"]).ravel().tolist()}
         )
+    data = data.map(lambda x: {"input_text": normalize(x["input_text"])})
+    data = data.filter(lambda x: keep_sentence(x["input_text"]))
+    data = data.map(lambda x: {"input_text": ' '.join(x["input_text"])})
     data = data.map(
         lambda x: tokenizer(x["input_text"], padding=True, truncation=True),
         batched=True,
@@ -508,12 +514,17 @@ if __name__ == "__main__":
                             tokens_tensor_chunk,
                             token_type_ids_chunk,
                         ) in make_chunks(tokens_tensor, token_type_ids, 1000):
+                            calculate_time = lambda: time.time() - start_time
+                            logging.info(f"Tokens Tensor Chunk {calculate_time()}")
                             tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
+                            logging.info(f"Tokens Type ID Chunk {calculate_time()}")
                             token_type_ids_chunk = torch.tensor(token_type_ids_chunk)
+                            logging.info(f"Eval Model {calculate_time()}")
                             outputs = eval_model(
                                 tokens_tensor_chunk,
                                 token_type_ids=token_type_ids_chunk,
                             )
+                            logging.info(f"Load Outputs into Predictions  {calculate_time()}")
                             predictions += outputs[0]
                             logging.info(
                                 f"finished chunk {chunk} - total predictions = {len(predictions)}, writing predictions"
