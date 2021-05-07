@@ -69,6 +69,8 @@ from relabel_funcs import (
 import time
 import spacy
 from text_preprocess import keep_sentence, normalize
+from torch.utils.data import DataLoader
+from accelerate import Accelerator
 
 nlp = spacy.load("en_core_web_sm")
 logging.basicConfig(level=logging.INFO)
@@ -198,7 +200,7 @@ def concate(dataset_name, data, cache_dir):
             concatenate_datasets(list(sub_dataset.values()))
             for sub_dataset in all_datasets_downloaded
         ]
-        data = concatenate_datasets([{"train": combined_datasets}])
+        data = concatenate_datasets(combined_datasets)
         return DatasetDict({"train": data})
     data = concatenate_datasets(
         list(load_dataset(dataset_name, cache_dir=cache_dir).values())
@@ -226,19 +228,24 @@ def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir="
     preprocess_function = dataset_preprocess.get(dataset_name, lambda x: x)
     logging.info(f"CONCATE")
     data = concate(dataset_name, data, cache_dir)
-    logging.info(f"MAP")
+    logging.info(f"MAP Preprocess Function")
     data = data.map(lambda x: {"input_text": preprocess_function(x[sentence_col])})
-
+    logging.info(f"Remove Columns")
     data["train"] = data["train"].remove_columns(cols_removed[dataset_name])
+    logging.info(f"NP Concate")
     if dataset_name == "air_dialogue":
         data['train'] = Dataset.from_dict(
             {"input_text": np.concatenate(data["train"]["input_text"]).ravel().tolist()}
         )
+    logging.info(f"Normalize")
     data = data.map(lambda x: {"input_text": normalize(x["input_text"])})
+    logging.info(f"Keep Sentence")
     data = data.filter(lambda x: keep_sentence(x["input_text"]))
+    logging.info(f"Join")
     data = data.map(lambda x: {"input_text": ' '.join(x["input_text"])})
+    logging.info(f"Tokenizer")
     data = data.map(
-        lambda x: tokenizer(x["input_text"], padding=True, truncation=True),
+        lambda x: tokenizer(x["input_text"], padding="max_length", truncation=True),
         batched=True,
     )
     return data
@@ -443,7 +450,7 @@ if __name__ == "__main__":
 
         logging.info(f"Tokenizing dataset column {TRAIN_FEATURES_COLUMN}")
         dataset = dataset.map(
-            lambda x: tokenizer(x[TRAIN_FEATURES_COLUMN], truncation=True, padding=True)
+            lambda x: tokenizer(x[TRAIN_FEATURES_COLUMN], truncation=True, padding="max_length")
         )
 
         logging.info(
@@ -479,6 +486,7 @@ if __name__ == "__main__":
             datasets_to_eval = dataset_cols.keys()
         else:
             datasets_to_eval = [EVALUATION_DATASET]
+        accelerator = Accelerator()
         for dataset_name in datasets_to_eval:
             tot = loader(dataset_name, tokenizer, args.cache_dir)
             for eval_dataset in tot:
@@ -513,12 +521,16 @@ if __name__ == "__main__":
                         for (
                             tokens_tensor_chunk,
                             token_type_ids_chunk,
-                        ) in make_chunks(tokens_tensor, token_type_ids, 1000):
+                        ) in make_chunks(tokens_tensor, token_type_ids, 2000):
                             calculate_time = lambda: time.time() - start_time
                             logging.info(f"Tokens Tensor Chunk {calculate_time()}")
                             tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
                             logging.info(f"Tokens Type ID Chunk {calculate_time()}")
                             token_type_ids_chunk = torch.tensor(token_type_ids_chunk)
+                            logging.info(f"Loading to CUDA {calculate_time()}")
+                            if USE_CUDA:
+                                tokens_tensor_chunk = tokens_tensor_chunk.to("cuda")
+                                token_type_ids_chunk = token_type_ids_chunk.to("cuda")
                             logging.info(f"Eval Model {calculate_time()}")
                             outputs = eval_model(
                                 tokens_tensor_chunk,
