@@ -20,7 +20,7 @@ optional arguments:
   -ed {EMBO/biolang,empathetic_dialogues,conv_ai_3,air_dialogue,ted_talks_iwslt,tweet_eval}, --eval-dataset {EMBO/biolang,empathetic_dialogues,conv_ai_3,air_dialogue,ted_talks_iwslt,tweet_eval}
                         Dataset to evaluate on
   --eval-all            Whether to run evaluation on all datasets. Overrides all other eval commands
-  -tc, --training-config    
+  -tc, --training-config
                         A path to a file containing a JSON blob containing config settings for model training
   -cd, --cache_dir      A path to a directory to use as a cache directory for loading datasets from Hugging Face
 
@@ -38,8 +38,8 @@ from transformers import (
     # EarlyStoppingCallback,
 )
 
-
-from datasets import load_dataset, Dataset
+import datasets
+from datasets import load_dataset, concatenate_datasets, Dataset, DatasetDict
 import numpy as np
 import json
 import torch
@@ -54,8 +54,8 @@ import argparse
 import logging
 from datetime import datetime
 from relabel_funcs import (
-    relabel_sbic_offensiveness, 
-    split_relabel_rt_gender, 
+    relabel_sbic_offensiveness,
+    split_relabel_rt_gender,
     filter_relabel_sbic_targetcategory,
     split_relabel_jigsaw_toxic,
     split_relabel_jigsaw_severetoxic,
@@ -64,12 +64,14 @@ from relabel_funcs import (
     relabel_md_gender_convai_binary,
     relabel_md_gender_convai_ternary,
     relabel_md_gender_wizard,
-    relabel_md_gender_yelp
+    relabel_md_gender_yelp,
 )
 import time
+import spacy
 
+
+nlp = spacy.load("en_core_web_sm")
 logging.basicConfig(level=logging.INFO)
-
 USE_CUDA = False
 # mapping of training datasets to their labels
 training_dataset_cols = {
@@ -94,23 +96,28 @@ training_relabel_funcs = {
     "relabel_md_gender_convai_binary": relabel_md_gender_convai_binary,
     "relabel_md_gender_convai_ternary": relabel_md_gender_convai_ternary,
     "relabel_md_gender_wizard": relabel_md_gender_wizard,
-    "relabel_md_gender_yelp": relabel_md_gender_yelp
+    "relabel_md_gender_yelp": relabel_md_gender_yelp,
 }
 
 
 ## mapping of dataset_name to dataset columns of sentences
 dataset_cols = {
-    "EMBO/biolang": "special_tokens_mask",
+    "EMBO/biolang": "input_text",
     "empathetic_dialogues": "utterance",
     "conv_ai_3": "answer",
     "air_dialogue": "dialogue",
     "ted_talks_iwslt": "translation",
     "tweet_eval": "text",
+    "cnn_dailymail": "highlights",
+    "pubmed": "",
+    "wikipedia": "title",
 }
 
 
 dataset_types = {
     "ted_talks_iwslt": ["nl_en_2014", "nl_en_2015"],
+    "cnn_dailymail": ["1.0.0", "2.0.0", "3.0.0"],
+    "wikipedia": ["20200501.en"],
     "tweet_eval": [
         "emoji",
         "emotion",
@@ -135,8 +142,68 @@ dataset_preprocess = {
 
 
 cols_removed = {
-    "air_dialogue": ["action", "correct_sample", "dialogue", "expected_action", "intent", "search_info", "timestamps"]
+    "air_dialogue": [
+        "action",
+        "correct_sample",
+        "dialogue",
+        "expected_action",
+        "intent",
+        "search_info",
+        "timestamps",
+    ],
+    "conv_ai_3": [
+        "topic_id",
+        "initial_request",
+        "topic_desc",
+        "clarification_need",
+        "facet_id",
+        "facet_desc",
+        "question_id",
+        "question",
+        "answer",
+    ],
+    "tweet_eval": ["label"],
+    "empathetic_dialogues": [
+        "conv_id",
+        "utterance_idx",
+        "context",
+        "prompt",
+        "speaker_idx",
+        "selfeval",
+        "tags",
+    ],
+    "ted_talks_iwslt": [""],
 }
+
+
+def get_sentences(paragraph):
+    print(len(paragraph), type(paragraph))
+    result = []
+    try:
+        doc = nlp(paragraph)
+        for sentence in doc.sents:
+            result.append(sentence)
+    except Exception:
+        print("This paragraph could not be converted", paragraph)
+    return result
+
+
+def concate(dataset_name, data, cache_dir):
+    if dataset_name in dataset_types:
+        all_datasets_downloaded = [
+            load_dataset(dataset_name, sub_dataset, cache_dir=cache_dir)
+            for sub_dataset in dataset_types[dataset_name]
+        ]
+        combined_datasets = [
+            concatenate_datasets(list(sub_dataset.values()))
+            for sub_dataset in all_datasets_downloaded
+        ]
+        data = concatenate_datasets([{"train": combined_datasets}])
+        return DatasetDict({"train": data})
+    data = concatenate_datasets(
+        list(load_dataset(dataset_name, cache_dir=cache_dir).values())
+    )
+    return DatasetDict({"train": data})
 
 
 def loader(dataset_name, tokenizer, cache_dir):
@@ -148,22 +215,22 @@ def loader(dataset_name, tokenizer, cache_dir):
     if d_types:
         for d_type in d_types:
             data = load_dataset(dataset_name, d_type, cache_dir=cache_dir)
-            tot.append(_preprocess_dataset(dataset_name, data, sentence_col, tokenizer))
+            tot.append(_preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir=cache_dir))
     else:
         data = load_dataset(dataset_name, cache_dir=cache_dir)
-        tot.append(_preprocess_dataset(dataset_name, data, sentence_col, tokenizer))
+        tot.append(_preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir=cache_dir))
     return tot
 
 
-def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer):
+def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir=""):
     preprocess_function = dataset_preprocess.get(dataset_name, lambda x: x)
+    data = concate(dataset_name, data, cache_dir)
     data = data.map(lambda x: {"input_text": preprocess_function(x[sentence_col])})
-    first_length = len(data['train']['input_text'])
-    if dataset_name in set(["air_dialogue"]):
-        for split in data:
-            data[split].remove_columns(cols_removed[dataset_name])
-            data[split] = Dataset.from_dict({'input_text': np.concatenate(data[split]['input_text']).ravel().tolist()})
-    assert len(data['train']['input_text']) >= first_length 
+    data["train"] = data["train"].remove_columns(cols_removed[dataset_name])
+    if dataset_name == "air_dialogue":
+        data['train'] = Dataset.from_dict(
+            {"input_text": np.concatenate(data["train"]["input_text"]).ravel().tolist()}
+        )
     data = data.map(
         lambda x: tokenizer(x["input_text"], padding=True, truncation=True),
         batched=True,
@@ -179,8 +246,6 @@ def compute_metrics(pred, average_fscore_support):
     )
     acc = accuracy_score(labels, preds)
     return {"accuracy": acc, "f1": f1, "precision": precision, "recall": recall}
-
-
 
 
 def train(model, encoded_dataset, tokenizer, run_output_dir, average_fscore_support):
@@ -207,8 +272,9 @@ def train(model, encoded_dataset, tokenizer, run_output_dir, average_fscore_supp
     logging.info("Constructed trainer")
 
     trainer.train()
-    
+
     return trainer
+
 
 def make_chunks(data1, data2, chunk_size):
     while data1 and data2:
@@ -310,33 +376,37 @@ if __name__ == "__main__":
     if USE_CUDA:
         torch.cuda.empty_cache()
 
-    logging.info(f"Loading dictionary of training parameters from {args.training_config}")
+    logging.info(
+        f"Loading dictionary of training parameters from {args.training_config}"
+    )
 
-    with open(args.training_config, 'r') as f:
+    with open(args.training_config, "r") as f:
 
         training_config_dict = json.load(f)
 
-    AVERAGE_FSCORE_SUPPORT = training_config_dict['average_fscore_support']
-    TRAINING_DATASET = training_config_dict['training_dataset']
-    TRAINING_DATASET_SPLIT = None if training_config_dict['training_dataset_split'] == 'None' else training_config_dict['training_dataset_split']
-    MODEL_CHECKPOINT = training_config_dict['model_checkpoint']
-    RUN_OUTPUTS = training_config_dict['run_outputs']
-    TRAIN_FEATURES_COLUMN = training_config_dict['train_features_column']
-    NUM_LABELS = training_config_dict['num_labels']
-    TRAIN_LABELS_COLUMN = training_config_dict['train_labels_column']
-    TRAINING_RELABEL_FUNC_NAME = training_config_dict['training_relabel_func_name']
+    AVERAGE_FSCORE_SUPPORT = training_config_dict["average_fscore_support"]
+    TRAINING_DATASET = training_config_dict["training_dataset"]
+    TRAINING_DATASET_SPLIT = (
+        None
+        if training_config_dict["training_dataset_split"] == "None"
+        else training_config_dict["training_dataset_split"]
+    )
+    MODEL_CHECKPOINT = training_config_dict["model_checkpoint"]
+    RUN_OUTPUTS = training_config_dict["run_outputs"]
+    TRAIN_FEATURES_COLUMN = training_config_dict["train_features_column"]
+    NUM_LABELS = training_config_dict["num_labels"]
+    TRAIN_LABELS_COLUMN = training_config_dict["train_labels_column"]
+    TRAINING_RELABEL_FUNC_NAME = training_config_dict["training_relabel_func_name"]
     DATA_DIR = None
     SUBCORPUS = None
 
-    if TRAINING_DATASET == 'jigsaw_toxicity_pred':
-        
-        DATA_DIR = training_config_dict['jigsaw_dataset_dir']
+    if TRAINING_DATASET == "jigsaw_toxicity_pred":
 
-    if TRAINING_DATASET in set(['peixian/rtGender', 'md_gender_bias']):
+        DATA_DIR = training_config_dict["jigsaw_dataset_dir"]
 
-        SUBCORPUS = training_config_dict['subcorpus']
+    if TRAINING_DATASET in set(["peixian/rtGender", "md_gender_bias"]):
 
-
+        SUBCORPUS = training_config_dict["subcorpus"]
 
     logging.info("Loading tokenizer")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_CHECKPOINT, use_fast=True)
@@ -348,26 +418,35 @@ if __name__ == "__main__":
         logging.info(
             f"Loading dataset {TRAINING_DATASET} with split {TRAINING_DATASET_SPLIT}"
         )
-        dataset = load_dataset(
-            TRAINING_DATASET, split=TRAINING_DATASET_SPLIT, cache_dir=CACHE_DIR,
-            data_dir=DATA_DIR
-        ) if  SUBCORPUS is None else load_dataset(
-            TRAINING_DATASET, SUBCORPUS, split=TRAINING_DATASET_SPLIT, cache_dir=CACHE_DIR,
-            data_dir=DATA_DIR
+        dataset = (
+            load_dataset(
+                TRAINING_DATASET,
+                split=TRAINING_DATASET_SPLIT,
+                cache_dir=CACHE_DIR,
+                data_dir=DATA_DIR,
+            )
+            if SUBCORPUS is None
+            else load_dataset(
+                TRAINING_DATASET,
+                SUBCORPUS,
+                split=TRAINING_DATASET_SPLIT,
+                cache_dir=CACHE_DIR,
+                data_dir=DATA_DIR,
+            )
         )
 
         logging.info(f"Tokenizing dataset column {TRAIN_FEATURES_COLUMN}")
         dataset = dataset.map(
-            lambda x: tokenizer(
-                x[TRAIN_FEATURES_COLUMN], truncation=True, padding=True
-            )
+            lambda x: tokenizer(x[TRAIN_FEATURES_COLUMN], truncation=True, padding=True)
         )
 
-        logging.info(f"Relabeling dataset column {TRAIN_LABELS_COLUMN} using {TRAINING_RELABEL_FUNC_NAME}")
+        logging.info(
+            f"Relabeling dataset column {TRAIN_LABELS_COLUMN} using {TRAINING_RELABEL_FUNC_NAME}"
+        )
         dataset = relabel_training(dataset)
 
-        logging.info(f"Dropping rows in training data where label is missing")
-        dataset = dataset.filter(lambda row: not (row['labels'] is None))
+        logging.info("Dropping rows in training data where label is missing")
+        dataset = dataset.filter(lambda row: not (row["labels"] is None))
 
         logging.info("Training...")
         pretrained_model = AutoModelForSequenceClassification.from_pretrained(
@@ -377,7 +456,9 @@ if __name__ == "__main__":
         if USE_CUDA:
             pretrained_model.to("cuda")
 
-        trainer = train(pretrained_model, dataset, tokenizer, RUN_OUTPUTS, AVERAGE_FSCORE_SUPPORT)
+        trainer = train(
+            pretrained_model, dataset, tokenizer, RUN_OUTPUTS, AVERAGE_FSCORE_SUPPORT
+        )
         trainer.save_model(args.model_output)
 
     if args.evaluate:
@@ -395,63 +476,59 @@ if __name__ == "__main__":
         for dataset_name in datasets_to_eval:
             tot = loader(dataset_name, tokenizer, args.cache_dir)
             for eval_dataset in tot:
-                for split in eval_dataset:
-                    torch.cuda.empty_cache()
-                    current_dataset = eval_dataset[split]
+                torch.cuda.empty_cache()
+                current_dataset = eval_dataset["train"]
 
-                    logging.info(f"Evaluating {current_dataset}")
-                    logging.info("Torch memory dump below")
-                    logging.info(pformat(torch.cuda.memory_stats(device=None)))
-                    tokens_tensor = current_dataset["input_ids"]
-                    token_type_ids = current_dataset["token_type_ids"]
-                    logging.info("setting model")
-                    eval_model.eval()
+                logging.info(f"Evaluating {current_dataset}")
+                logging.info("Torch memory dump below")
+                logging.info(pformat(torch.cuda.memory_stats(device=None)))
+                tokens_tensor = current_dataset["input_ids"]
+                token_type_ids = current_dataset["token_type_ids"]
+                logging.info("setting model")
+                eval_model.eval()
 
-                    torch.cuda.empty_cache()
-                    logging.info("evaluating")
-                    predictions = []
-                    chunk = 0
-                    logging.info("Opening file and writing")
-                    now = datetime.now()
-                    current_time = now.strftime("%H:%M:%S")
-                    fname_model_prefix = args.model_input.replace('/', '_')
-                    filename = f"{fname_model_prefix}-{current_time}-{dataset_name}-{split}-partial-predictions-eval.out"
-                    logging.info(f"Opening file {filename} to write results")
-                    with open(filename, "w") as outfile:
-                        outfile.write("PARTIAL PREDICTIONS BELOW\n")
-                        outfile.write(f"args: {args}\n")
-                        with torch.no_grad():
-                            start_time = time.time()
-                            for (
+                torch.cuda.empty_cache()
+                logging.info("evaluating")
+                predictions = []
+                chunk = 0
+                logging.info("Opening file and writing")
+                now = datetime.now()
+                current_time = now.strftime("%H:%M:%S")
+                fname_model_prefix = args.model_input.replace("/", "_")
+                filename = (
+                    f"{current_time}-{dataset_name}-train-partial-predictions-eval.out"
+                )
+                logging.info(f"Opening file {filename} to write results")
+                with open(filename, "w") as outfile:
+                    outfile.write("PARTIAL PREDICTIONS BELOW\n")
+                    outfile.write(f"args: {args}\n")
+                    with torch.no_grad():
+                        start_time = time.time()
+                        for (
+                            tokens_tensor_chunk,
+                            token_type_ids_chunk,
+                        ) in make_chunks(tokens_tensor, token_type_ids, 1000):
+                            tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
+                            token_type_ids_chunk = torch.tensor(token_type_ids_chunk)
+                            outputs = eval_model(
                                 tokens_tensor_chunk,
-                                token_type_ids_chunk,
-                            ) in make_chunks(tokens_tensor, token_type_ids, 100):
-                                tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
-                                token_type_ids_chunk = torch.tensor(
-                                    token_type_ids_chunk
-                                )
-                                outputs = eval_model(
-                                    tokens_tensor_chunk,
-                                    token_type_ids=token_type_ids_chunk,
-                                )
-                                predictions += outputs[0]
-                                logging.info(
-                                    f"finished chunk {chunk} - total predictions = {len(predictions)}, writing predictions"
-                                )
-                                # output is [[123, 123, 123], [123, 123, 123]]
-                                for token_ids, preds in zip(
-                                    token_type_ids_chunk, outputs[0]
-                                ):
-                                    outfile.write(f"{tokens_tensor_chunk} | {preds}\n")
+                                token_type_ids=token_type_ids_chunk,
+                            )
+                            predictions += outputs[0]
+                            logging.info(
+                                f"finished chunk {chunk} - total predictions = {len(predictions)}, writing predictions"
+                            )
+                            # output is [[123, 123, 123], [123, 123, 123]]
+                            for token_ids, preds in zip(
+                                token_type_ids_chunk, outputs[0]
+                            ):
+                                outfile.write(f"{tokens_tensor_chunk} | {preds}\n")
+                        end_time = time.time()
+                        logging.info(f"Time for evaluation {end_time - start_time}")
 
-                            end_time = time.time()
-                            logging.info(f"Time for evaluation {end_time - start_time}")
-
-                    filename = f"{fname_model_prefix}-{current_time}-{dataset_name}-{split}-eval.out"
-                    with open(filename, "w") as outfile:
-                        outfile.write("FULL PREDICTIONS BELOW\n")
-                        outfile.write(f"args: {args}\n")
-                        for text, preds in zip(
-                            current_dataset["input_text"], predictions
-                        ):
-                            outfile.write(f"{text} | {preds}\n")
+                filename = f"{current_time}-{dataset_name}-train-eval.out"
+                with open(filename, "w") as outfile:
+                    outfile.write("FULL PREDICTIONS BELOW\n")
+                    outfile.write(f"args: {args}\n")
+                    for text, preds in zip(current_dataset["input_text"], predictions):
+                        outfile.write(f"{text} | {preds}\n")
