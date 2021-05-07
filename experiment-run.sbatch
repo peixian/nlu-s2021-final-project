@@ -11,13 +11,13 @@ set -euox pipefail
 #SBATCH --output=nlu_experiment%A_%a.out
 
 module purge
-module load cuda/10.2.89
+module load cuda/11.1.74
 module load anaconda3/2020.07
 
 echo "Loading activate"
 set +u
-source activate transformers-dev
+source activate nlu-final-project
 set -u
 
 
-python $(realpath ./experiment_script.py) $@
+./experiment_script.py $@
