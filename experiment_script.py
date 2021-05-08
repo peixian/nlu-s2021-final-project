@@ -174,7 +174,7 @@ cols_removed = {
         "selfeval",
         "tags",
     ],
-    "ted_talks_iwslt": [""],
+    "ted_talks_iwslt": ["translation"],
 }
 
 
@@ -521,7 +521,7 @@ if __name__ == "__main__":
                         for (
                             tokens_tensor_chunk,
                             token_type_ids_chunk,
-                        ) in make_chunks(tokens_tensor, token_type_ids, 2000):
+                        ) in make_chunks(tokens_tensor, token_type_ids, 1000):
                             calculate_time = lambda: time.time() - start_time
                             logging.info(f"Tokens Tensor Chunk {calculate_time()}")
                             tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
