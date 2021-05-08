@@ -508,8 +508,9 @@ if __name__ == "__main__":
             datasets_to_eval = dataset_cols.keys()
         else:
             datasets_to_eval = [EVALUATION_DATASET]
+            
         accelerator = Accelerator()
-        
+        MODEL_NAME = args.model_input.split("/")[-2]
         for dataset_name in datasets_to_eval:
             tokenized_dataset = f"{PICKLE_PATH[:-1]}{dataset_name}_tokenized.pkl"
             tot = loader(dataset_name, tokenizer, args.cache_dir)
@@ -535,7 +536,7 @@ if __name__ == "__main__":
                 current_time = now.strftime("%H:%M:%S")
                 fname_model_prefix = args.model_input.replace("/", "_")
                 filename = (
-                    f"{current_time}-{dataset_name}-train-partial-predictions-eval.out"
+                    f"{MODEL_NAME}-{current_time}-{dataset_name}-train-partial-predictions-eval.out"
                 )
                 logging.info(f"Opening file {filename} to write results")
                 with open(filename, "w") as outfile:
@@ -574,7 +575,7 @@ if __name__ == "__main__":
                         end_time = time.time()
                         logging.info(f"Time for evaluation {end_time - start_time}")
 
-                filename = f"{current_time}-{dataset_name}-train-eval.out"
+                filename = f"{MODEL_NAME}-{current_time}-{dataset_name}-train-eval.out"
                 with open(filename, "w") as outfile:
                     outfile.write("FULL PREDICTIONS BELOW\n")
                     outfile.write(f"args: {args}\n")
