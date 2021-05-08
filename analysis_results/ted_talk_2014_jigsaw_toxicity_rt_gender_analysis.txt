@@ -1,0 +1,35 @@
+Description of scores (unscaled) for data at results/final/Cameron_BERT-Jigsaw-200506-ted_talks_iwslt-train-eval.out
+count    2966.000000
+mean       -0.101467
+std         0.912698
+min        -0.999946
+25%        -0.995036
+50%        -0.856688
+75%         0.883761
+max         0.992353
+Name: scores_1, dtype: float64
+
+Description of scores (unscaled) for data at results/final/Cameron_BERT-rtgender-opgender-annotations-204148-ted_talks_iwslt-train-eval.out
+count    2966.000000
+mean       -0.301967
+std         0.829117
+min        -0.992995
+25%        -0.957355
+50%        -0.820019
+75%         0.913283
+max         0.989999
+Name: scores_2, dtype: float64
+
+Correlations:
+          scores_1  scores_2
+scores_1  1.000000  0.048447
+scores_2  0.048447  1.000000
+
+Contingency matrix:
+category_2   Man  Woman
+category_1             
+Not Toxic   1066    484
+Toxic        973    443
+
+p-value from a Chi^2 test is:
+0.996223831855936

@@ -1,0 +1,35 @@
+Description of scores (unscaled) for data at results/final/Cameron_BERT-mdgender-convai-binary-204318-ted_talks_iwslt-train-eval.out
+count    2966.000000
+mean        0.706528
+std         0.672947
+min        -0.998882
+25%         0.971378
+50%         0.975226
+75%         0.982119
+max         0.999645
+Name: scores_1, dtype: float64
+
+Description of scores (unscaled) for data at results/final/Cameron_BERT-SBIC-offensive-204100-ted_talks_iwslt-train-eval.out
+count    2966.000000
+mean       -0.958887
+std         0.202286
+min        -0.999085
+25%        -0.993395
+50%        -0.988044
+75%        -0.982916
+max         0.993377
+Name: scores_2, dtype: float64
+
+Correlations:
+          scores_1  scores_2
+scores_1  1.000000 -0.120139
+scores_2 -0.120139  1.000000
+
+Contingency matrix:
+category_2  Not Offensive  Offensive
+category_1                          
+Female                395         15
+Male                 2539         17
+
+p-value from a Chi^2 test is:
+2.113337829520022e-07
