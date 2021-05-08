@@ -71,6 +71,8 @@ import spacy
 from text_preprocess import keep_sentence, normalize
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
+from tqdm import tqdm
+
 
 nlp = spacy.load("en_core_web_sm")
 logging.basicConfig(level=logging.INFO)
@@ -178,17 +180,27 @@ cols_removed = {
 }
 
 
+split_para = set(["ted_talks_iwslt", "empathetic_dialogues", "wikipedia"])
+
+
 def get_sentences(paragraph):
-    print(len(paragraph), type(paragraph))
     result = []
     try:
         doc = nlp(paragraph)
         for sentence in doc.sents:
-            result.append(sentence)
+            result.append(str(sentence))
     except Exception:
         print("This paragraph could not be converted", paragraph)
     return result
 
+
+def split_long_text(list_paragraphs):
+    results = []
+    for paragraph in tqdm(list_paragraphs):
+        results.append(get_sentences(paragraph))
+
+    results = [item for sublist in results for item in sublist]
+    return results
 
 def concate(dataset_name, data, cache_dir):
     if dataset_name in dataset_types:
@@ -226,17 +238,22 @@ def loader(dataset_name, tokenizer, cache_dir):
 
 def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir=""):
     preprocess_function = dataset_preprocess.get(dataset_name, lambda x: x)
-    logging.info(f"CONCATE")
     data = concate(dataset_name, data, cache_dir)
-    logging.info(f"MAP Preprocess Function")
     data = data.map(lambda x: {"input_text": preprocess_function(x[sentence_col])})
-    logging.info(f"Remove Columns")
     data["train"] = data["train"].remove_columns(cols_removed[dataset_name])
+
     logging.info(f"NP Concate")
     if dataset_name == "air_dialogue":
         data['train'] = Dataset.from_dict(
             {"input_text": np.concatenate(data["train"]["input_text"]).ravel().tolist()}
         )
+    
+    if dataset_name in split_para:
+        logging.info(f"Splitting Paragraphs")
+        data['train'] = Dataset.from_dict(
+            {"input_text": split_long_text(data['train']['input_text'])}
+            )
+
     logging.info(f"Normalize")
     data = data.map(lambda x: {"input_text": normalize(x["input_text"])})
     logging.info(f"Keep Sentence")
