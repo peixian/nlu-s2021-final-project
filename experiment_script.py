@@ -72,11 +72,16 @@ from text_preprocess import keep_sentence, normalize
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
 from tqdm import tqdm
+import pandas as pd
+from pandas import DataFrame
+import os
+from glob import glob
 
 
 nlp = spacy.load("en_core_web_sm")
 logging.basicConfig(level=logging.INFO)
 USE_CUDA = False
+PICKLE_PATH = os.getcwd() + "/pickle_data/*"
 # mapping of training datasets to their labels
 training_dataset_cols = {
     "peixian/rtGender": "",
@@ -504,8 +509,11 @@ if __name__ == "__main__":
         else:
             datasets_to_eval = [EVALUATION_DATASET]
         accelerator = Accelerator()
+        
         for dataset_name in datasets_to_eval:
+            tokenized_dataset = f"{PICKLE_PATH[:-1]}{dataset_name}_tokenized.pkl"
             tot = loader(dataset_name, tokenizer, args.cache_dir)
+            DataFrame(tot).to_pickle(tokenized_dataset)
             for eval_dataset in tot:
                 torch.cuda.empty_cache()
                 current_dataset = eval_dataset["train"]
