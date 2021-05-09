@@ -223,17 +223,37 @@ def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir="
         data['train'] = Dataset.from_dict(
             {"input_text": np.concatenate(data["train"]["input_text"]).ravel().tolist()}
         )
-    
+
+    if dataset_name == "air_dialogue":
+        data['train'] = Dataset.from_dict(
+            {"input_text": data['train']['input_text'][:100000]}
+            )
+    elif dataset_name == "wikipedia":
+        data['train'] = Dataset.from_dict(
+            {"input_text": data['train']['input_text'][:200000]}
+            )
+
     if dataset_name in split_para:
         logging.info(f"Splitting Paragraphs")
         data['train'] = Dataset.from_dict(
             {"input_text": split_long_text(data['train']['input_text'])}
             )
+        
 
     logging.info(f"Normalize")
     data = data.map(lambda x: {"input_text": normalize(x["input_text"])})
     logging.info(f"Keep Sentence")
     data = data.filter(lambda x: keep_sentence(x["input_text"]))
+    
+    now = datetime.now()
+    current_time = now.strftime("%H:%M:%S")
+    filename = f"{current_time}-{dataset_name}-full-text.out"
+    logging.info(f"Opening file {filename} to write results")    
+    with open(filename, "w") as outfile:
+        outfile.write("FULL TEXT BELOW\n")
+        for i, text in enumerate(data['train']["input_text"]):
+            outfile.write(f"{i} | {text}\n")
+
     logging.info(f"Join")
     data = data.map(lambda x: {"input_text": ' '.join(x["input_text"])})
     logging.info(f"Tokenizer")
@@ -282,11 +302,12 @@ def train(model, encoded_dataset, tokenizer, run_output_dir, average_fscore_supp
     return trainer
 
 
-def make_chunks(data1, data2, chunk_size):
+def make_chunks(data1, data2, data3, chunk_size):
     while data1 and data2:
         chunk1, data1 = data1[:chunk_size], data1[chunk_size:]
         chunk2, data2 = data2[:chunk_size], data2[chunk_size:]
-        yield chunk1, chunk2
+        chunk3, data3 = data2[:chunk_size], data2[chunk_size:]
+        yield chunk1, chunk2, chunk3
 
 
 if __name__ == "__main__":
@@ -481,7 +502,7 @@ if __name__ == "__main__":
             datasets_to_eval = [EVALUATION_DATASET]
 
         accelerator = Accelerator()
-        MODEL_NAME = args.model_input.split("/")[-2]
+
         for dataset_name in datasets_to_eval:
             tokenized_dataset = f"{PICKLE_PATH[:-1]}{dataset_name}_tokenized.pkl"
             tot = loader(dataset_name, tokenizer, args.cache_dir)
@@ -495,6 +516,7 @@ if __name__ == "__main__":
                 logging.info(pformat(torch.cuda.memory_stats(device=None)))
                 tokens_tensor = current_dataset["input_ids"]
                 token_type_ids = current_dataset["token_type_ids"]
+                attn_masks = current_dataset["attention_mask"]
                 logging.info("setting model")
                 eval_model.eval()
 
@@ -507,7 +529,7 @@ if __name__ == "__main__":
                 current_time = now.strftime("%H:%M:%S")
                 fname_model_prefix = args.model_input.replace("/", "_")
                 filename = (
-                    f"{MODEL_NAME}-{current_time}-{dataset_name}-train-partial-predictions-eval.out"
+                    f"{args.model_input}-{current_time}-{dataset_name}-train-partial-predictions-eval.out".replace("/", "-")
                 )
                 logging.info(f"Opening file {filename} to write results")
                 with open(filename, "w") as outfile:
@@ -518,20 +540,25 @@ if __name__ == "__main__":
                         for (
                             tokens_tensor_chunk,
                             token_type_ids_chunk,
-                        ) in make_chunks(tokens_tensor, token_type_ids, 1000):
+                            attn_masks_chunk,
+                        ) in make_chunks(tokens_tensor, token_type_ids, attn_masks, 1000):
                             calculate_time = lambda: time.time() - start_time
+                            
                             logging.info(f"Tokens Tensor Chunk {calculate_time()}")
                             tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
-                            logging.info(f"Tokens Type ID Chunk {calculate_time()}")
                             token_type_ids_chunk = torch.tensor(token_type_ids_chunk)
-                            logging.info(f"Loading to CUDA {calculate_time()}")
+                            attn_masks_chunk = torch.tensor(attn_masks_chunk)
+                            
                             if USE_CUDA:
                                 tokens_tensor_chunk = tokens_tensor_chunk.to("cuda")
                                 token_type_ids_chunk = token_type_ids_chunk.to("cuda")
+                                attn_masks_chunk = attn_masks_chunk.to("cuda")
+
                             logging.info(f"Eval Model {calculate_time()}")
                             outputs = eval_model(
                                 tokens_tensor_chunk,
                                 token_type_ids=token_type_ids_chunk,
+                                attention_mask=attn_masks_chunk,
                             )
                             logging.info(f"Load Outputs into Predictions  {calculate_time()}")
                             predictions += outputs[0]
@@ -542,11 +569,11 @@ if __name__ == "__main__":
                             for token_ids, preds in zip(
                                 token_type_ids_chunk, outputs[0]
                             ):
-                                outfile.write(f"{tokens_tensor_chunk} | {preds}\n")
+                                outfile.write(f"{tokens_tensor_chunk.tolist()} | {preds}\n")
                         end_time = time.time()
                         logging.info(f"Time for evaluation {end_time - start_time}")
 
-                filename = f"{MODEL_NAME}-{current_time}-{dataset_name}-train-eval.out"
+                filename = f"{args.model_input}-{current_time}-{dataset_name}-train-eval.out".replace("/", "-")
                 with open(filename, "w") as outfile:
                     outfile.write("FULL PREDICTIONS BELOW\n")
                     outfile.write(f"args: {args}\n")
