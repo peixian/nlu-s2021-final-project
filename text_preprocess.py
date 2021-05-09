@@ -65,8 +65,9 @@ def clean_spec_dataset(text, dataset_name):
         return text
 
 
-def normalize(text, dataset_name=""):
+def normalize(text, dataset_name="", raw_text=True):
     text = clean_spec_dataset(text, dataset_name)
+    if raw_text: return text.split(" ")
     words = nltk.word_tokenize(text)
     words = remove_non_ascii(words)
     words = to_lowercase(words)
