@@ -120,6 +120,10 @@ dataset_cols = {
     "cnn_dailymail": "highlights",
     "pubmed": "",
     "wikipedia": "title",
+    "yelp_review_full": "text",
+    "yahoo_answers_topics": "best_answer",
+    "pubmed_qa": "long_answer",
+    "billsum": "summary",
 }
 
 
@@ -140,6 +144,7 @@ dataset_types = {
         "stance_feminist",
         "stance_hillary",
     ],
+    "pubmed_qa": ["pqa_unlabeled"],
 }
 
 
@@ -150,42 +155,8 @@ dataset_preprocess = {
 }
 
 
-cols_removed = {
-    "air_dialogue": [
-        "action",
-        "correct_sample",
-        "dialogue",
-        "expected_action",
-        "intent",
-        "search_info",
-        "timestamps",
-    ],
-    "conv_ai_3": [
-        "topic_id",
-        "initial_request",
-        "topic_desc",
-        "clarification_need",
-        "facet_id",
-        "facet_desc",
-        "question_id",
-        "question",
-        "answer",
-    ],
-    "tweet_eval": ["label"],
-    "empathetic_dialogues": [
-        "conv_id",
-        "utterance_idx",
-        "context",
-        "prompt",
-        "speaker_idx",
-        "selfeval",
-        "tags",
-    ],
-    "ted_talks_iwslt": ["translation"],
-}
-
-
-split_para = set(["ted_talks_iwslt", "empathetic_dialogues", "wikipedia"])
+split_para = set(["ted_talks_iwslt", "empathetic_dialogues", 
+                "wikipedia", "yelp_review_full", "yahoo_answers_topics", "pubmed_qa", "billsum"])
 
 
 def get_sentences(paragraph):
@@ -245,7 +216,7 @@ def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir="
     preprocess_function = dataset_preprocess.get(dataset_name, lambda x: x)
     data = concate(dataset_name, data, cache_dir)
     data = data.map(lambda x: {"input_text": preprocess_function(x[sentence_col])})
-    data["train"] = data["train"].remove_columns(cols_removed[dataset_name])
+    data["train"] = data["train"].remove_columns(set(data['train'].features) - set(['input_text']))
 
     logging.info(f"NP Concate")
     if dataset_name == "air_dialogue":
@@ -508,7 +479,7 @@ if __name__ == "__main__":
             datasets_to_eval = dataset_cols.keys()
         else:
             datasets_to_eval = [EVALUATION_DATASET]
-            
+
         accelerator = Accelerator()
         MODEL_NAME = args.model_input.split("/")[-2]
         for dataset_name in datasets_to_eval:
