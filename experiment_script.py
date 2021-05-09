@@ -521,52 +521,46 @@ if __name__ == "__main__":
                 eval_model.eval()
 
                 torch.cuda.empty_cache()
-                logging.info("evaluating")
+                
                 predictions = []
                 chunk = 0
-                logging.info("Opening file and writing")
                 now = datetime.now()
                 current_time = now.strftime("%H:%M:%S")
                 fname_model_prefix = args.model_input.replace("/", "_")
-                filename = (
-                    f"{args.model_input}-{current_time}-{dataset_name}-train-partial-predictions-eval.out".replace("/", "-")
-                )
-                logging.info(f"Opening file {filename} to write results")
-                with open(filename, "w") as outfile:
-                    outfile.write("PARTIAL PREDICTIONS BELOW\n")
-                    outfile.write(f"args: {args}\n")
-                    with torch.no_grad():
-                        start_time = time.time()
-                        for (
-                            tokens_tensor_chunk,
-                            token_type_ids_chunk,
-                            attn_masks_chunk,
-                        ) in make_chunks(tokens_tensor, token_type_ids, attn_masks, 1000):
-                            calculate_time = lambda: time.time() - start_time
-                            
-                            logging.info(f"Tokens Tensor Chunk {calculate_time()}")
-                            tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
-                            token_type_ids_chunk = torch.tensor(token_type_ids_chunk)
-                            attn_masks_chunk = torch.tensor(attn_masks_chunk)
-                            
-                            if USE_CUDA:
-                                tokens_tensor_chunk = tokens_tensor_chunk.to("cuda")
-                                token_type_ids_chunk = token_type_ids_chunk.to("cuda")
-                                attn_masks_chunk = attn_masks_chunk.to("cuda")
 
-                            logging.info(f"Eval Model {calculate_time()}")
-                            outputs = eval_model(
-                                tokens_tensor_chunk,
-                                token_type_ids=token_type_ids_chunk,
-                                attention_mask=attn_masks_chunk,
-                            )
-                            logging.info(f"Load Outputs into Predictions  {calculate_time()}")
-                            predictions += outputs[0]
-                            logging.info(
-                                f"finished chunk {chunk} - total predictions = {len(predictions)}, writing predictions"
-                            )
-                        end_time = time.time()
-                        logging.info(f"Time for evaluation {end_time - start_time}")
+                logging.info("Evaluating Loop Starts")
+                with torch.no_grad():
+                    start_time = time.time()
+                    for (
+                        tokens_tensor_chunk,
+                        token_type_ids_chunk,
+                        attn_masks_chunk,
+                    ) in make_chunks(tokens_tensor, token_type_ids, attn_masks, 1000):
+                        calculate_time = lambda: time.time() - start_time
+                            
+                        logging.info(f"Tokens Tensor Chunk {calculate_time()}")
+                        tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
+                        token_type_ids_chunk = torch.tensor(token_type_ids_chunk)
+                        attn_masks_chunk = torch.tensor(attn_masks_chunk)
+                            
+                        if USE_CUDA:
+                            tokens_tensor_chunk = tokens_tensor_chunk.to("cuda")
+                            token_type_ids_chunk = token_type_ids_chunk.to("cuda")
+                            attn_masks_chunk = attn_masks_chunk.to("cuda")
+
+                        logging.info(f"Eval Model {calculate_time()}")
+                        outputs = eval_model(
+                            tokens_tensor_chunk,
+                            token_type_ids=token_type_ids_chunk,
+                            attention_mask=attn_masks_chunk,
+                        )
+                        logging.info(f"Load Outputs into Predictions  {calculate_time()}")
+                        predictions += outputs[0]
+                        logging.info(
+                            f"finished chunk {chunk} - total predictions = {len(predictions)}, writing predictions"
+                        )
+                    end_time = time.time()
+                    logging.info(f"Time for evaluation {calculate_time()}")
 
                 filename = f"{args.model_input}-{current_time}-{dataset_name}-train-eval.out".replace("/", "-")
                 with open(filename, "w") as outfile:
