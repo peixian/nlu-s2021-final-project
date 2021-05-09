@@ -224,11 +224,11 @@ def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir="
             {"input_text": np.concatenate(data["train"]["input_text"]).ravel().tolist()}
         )
 
-    if dataset_name == "air_dialogue":
+    if dataset_name == "air_dialogue" or dataset_name == "yahoo_answers_topics":
         data['train'] = Dataset.from_dict(
             {"input_text": data['train']['input_text'][:100000]}
             )
-    elif dataset_name == "wikipedia":
+    elif dataset_name == "wikipedia" or dataset_name == "yelp_review_full":
         data['train'] = Dataset.from_dict(
             {"input_text": data['train']['input_text'][:200000]}
             )
@@ -565,11 +565,6 @@ if __name__ == "__main__":
                             logging.info(
                                 f"finished chunk {chunk} - total predictions = {len(predictions)}, writing predictions"
                             )
-                            # output is [[123, 123, 123], [123, 123, 123]]
-                            for token_ids, preds in zip(
-                                token_type_ids_chunk, outputs[0]
-                            ):
-                                outfile.write(f"{tokens_tensor_chunk.tolist()} | {preds}\n")
                         end_time = time.time()
                         logging.info(f"Time for evaluation {end_time - start_time}")
 
