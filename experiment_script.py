@@ -247,7 +247,7 @@ def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir="
     
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
-    filename = f"{current_time}-{dataset_name}-full-text.out"
+    filename = f"{dataset_name}-full-text.out"
     logging.info(f"Opening file {filename} to write results")    
     with open(filename, "w") as outfile:
         outfile.write("FULL TEXT BELOW\n")
@@ -306,9 +306,12 @@ def make_chunks(data1, data2, data3, chunk_size):
     while data1 and data2:
         chunk1, data1 = data1[:chunk_size], data1[chunk_size:]
         chunk2, data2 = data2[:chunk_size], data2[chunk_size:]
-        chunk3, data3 = data2[:chunk_size], data2[chunk_size:]
+        chunk3, data3 = data3[:chunk_size], data3[chunk_size:]
         yield chunk1, chunk2, chunk3
 
+
+def collate_fn(examples):
+    return tokenizer.pad(examples, padding="max_length", truncation=True, return_tensors="pt")
 
 if __name__ == "__main__":
 
@@ -528,15 +531,18 @@ if __name__ == "__main__":
                 current_time = now.strftime("%H:%M:%S")
                 fname_model_prefix = args.model_input.replace("/", "_")
 
-                logging.info("Evaluating Loop Starts")
+
+                start_time = time.time()
+                calculate_time = lambda: time.time() - start_time
+
                 with torch.no_grad():
-                    start_time = time.time()
+                    #start_time = time.time()
                     for (
                         tokens_tensor_chunk,
                         token_type_ids_chunk,
                         attn_masks_chunk,
                     ) in make_chunks(tokens_tensor, token_type_ids, attn_masks, 1000):
-                        calculate_time = lambda: time.time() - start_time
+                        #calculate_time = lambda: time.time() - start_time
                             
                         logging.info(f"Tokens Tensor Chunk {calculate_time()}")
                         tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
@@ -568,3 +574,7 @@ if __name__ == "__main__":
                     outfile.write(f"args: {args}\n")
                     for text, preds in zip(current_dataset["input_text"], predictions):
                         outfile.write(f"{text} | {preds}\n")
+
+
+
+
