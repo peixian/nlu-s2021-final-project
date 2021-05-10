@@ -46,9 +46,15 @@ def read_outfile(outfile_name, delimiter="|", skiprows=2, split_tensor=True):
         skiprows=skiprows,
         names=["sentence", "predictions"],
     )
-    df["predictions"] = df["predictions"].apply(
-        lambda x: x.replace("tensor(", "").replace(")", "")
-    )
+    df = df.dropna()
+    try:
+        df["predictions"] = df["predictions"].apply(
+            lambda x: x.replace("tensor(", "").replace(")", "").strip()
+        )
+    except Exception as e:
+        print(f"attempted to read and failed {outfile_name}")
+        raise e
+    df = df[df["predictions"].str.startswith("[")]
     df["predictions"] = df["predictions"].map(lambda x: pt_tensor(eval(x)))
     if split_tensor:
         df = df.join(
