@@ -68,7 +68,7 @@ from relabel_funcs import (
 )
 import time
 import spacy
-from text_preprocess import keep_sentence, normalize
+from text_preprocess import keep_sentence, normalize_raw
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
 from tqdm import tqdm
@@ -77,7 +77,7 @@ from pandas import DataFrame
 import os
 from glob import glob
 
-
+re.compile()
 nlp = spacy.load("en_core_web_sm")
 logging.basicConfig(level=logging.INFO)
 USE_CUDA = False
@@ -241,7 +241,7 @@ def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir="
         
 
     logging.info(f"Normalize")
-    data = data.map(lambda x: {"input_text": normalize(x["input_text"])})
+    data = data.map(lambda x: {"input_text": normalize_raw(x["input_text"])})
     logging.info(f"Keep Sentence")
     data = data.filter(lambda x: keep_sentence(x["input_text"]))
     
@@ -504,8 +504,6 @@ if __name__ == "__main__":
             datasets_to_eval = dataset_cols.keys()
         else:
             datasets_to_eval = [EVALUATION_DATASET]
-
-        accelerator = Accelerator()
 
         for dataset_name in datasets_to_eval:
             tokenized_dataset = f"{PICKLE_PATH[:-1]}{dataset_name}_tokenized.pkl"
