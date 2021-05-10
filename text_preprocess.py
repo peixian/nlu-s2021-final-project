@@ -4,6 +4,9 @@ from nltk import word_tokenize, sent_tokenize
 from nltk.corpus import stopwords
 
 
+strip_tweets = re.compile(r"(@[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)")
+
+
 def remove_non_ascii(words):
     """Remove non-ASCII characters from list of tokenized words"""
     new_words = []
@@ -58,9 +61,7 @@ def clean_spec_dataset(text, dataset_name):
     elif dataset_name == "ted_talks_iwslt":
         return "".join(text.split(":")[1:])
     elif dataset_name == "tweet_eval":
-        return " ".join(
-            re.sub(r"(@[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)", " ", text).split()
-        )
+        return strip_tweets.sub("", context)
     else:
         return text
 

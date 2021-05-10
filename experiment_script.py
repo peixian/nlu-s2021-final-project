@@ -77,7 +77,7 @@ from pandas import DataFrame
 import os
 from glob import glob
 
-re.compile()
+
 nlp = spacy.load("en_core_web_sm")
 logging.basicConfig(level=logging.INFO)
 USE_CUDA = False
