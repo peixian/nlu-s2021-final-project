@@ -68,11 +68,20 @@ from relabel_funcs import (
 )
 import time
 import spacy
+from text_preprocess import keep_sentence, normalize
+from torch.utils.data import DataLoader
+from accelerate import Accelerator
+from tqdm import tqdm
+import pandas as pd
+from pandas import DataFrame
+import os
+from glob import glob
 
 
 nlp = spacy.load("en_core_web_sm")
 logging.basicConfig(level=logging.INFO)
 USE_CUDA = False
+PICKLE_PATH = os.getcwd() + "/pickle_data/*"
 # mapping of training datasets to their labels
 training_dataset_cols = {
     "peixian/rtGender": "",
@@ -111,6 +120,10 @@ dataset_cols = {
     "cnn_dailymail": "highlights",
     "pubmed": "",
     "wikipedia": "title",
+    "yelp_review_full": "text",
+    "yahoo_answers_topics": "best_answer",
+    "pubmed_qa": "long_answer",
+    "billsum": "summary",
 }
 
 
@@ -131,6 +144,7 @@ dataset_types = {
         "stance_feminist",
         "stance_hillary",
     ],
+    "pubmed_qa": ["pqa_unlabeled"],
 }
 
 
@@ -141,52 +155,28 @@ dataset_preprocess = {
 }
 
 
-cols_removed = {
-    "air_dialogue": [
-        "action",
-        "correct_sample",
-        "dialogue",
-        "expected_action",
-        "intent",
-        "search_info",
-        "timestamps",
-    ],
-    "conv_ai_3": [
-        "topic_id",
-        "initial_request",
-        "topic_desc",
-        "clarification_need",
-        "facet_id",
-        "facet_desc",
-        "question_id",
-        "question",
-        "answer",
-    ],
-    "tweet_eval": ["label"],
-    "empathetic_dialogues": [
-        "conv_id",
-        "utterance_idx",
-        "context",
-        "prompt",
-        "speaker_idx",
-        "selfeval",
-        "tags",
-    ],
-    "ted_talks_iwslt": [""],
-}
+split_para = set(["ted_talks_iwslt", "empathetic_dialogues", 
+                "wikipedia", "yelp_review_full", "yahoo_answers_topics", "pubmed_qa", "billsum"])
 
 
 def get_sentences(paragraph):
-    print(len(paragraph), type(paragraph))
     result = []
     try:
         doc = nlp(paragraph)
         for sentence in doc.sents:
-            result.append(sentence)
+            result.append(str(sentence))
     except Exception:
         print("This paragraph could not be converted", paragraph)
     return result
 
+
+def split_long_text(list_paragraphs):
+    results = []
+    for paragraph in tqdm(list_paragraphs):
+        results.append(get_sentences(paragraph))
+
+    results = [item for sublist in results for item in sublist]
+    return results
 
 def concate(dataset_name, data, cache_dir):
     if dataset_name in dataset_types:
@@ -198,7 +188,7 @@ def concate(dataset_name, data, cache_dir):
             concatenate_datasets(list(sub_dataset.values()))
             for sub_dataset in all_datasets_downloaded
         ]
-        data = concatenate_datasets([{"train": combined_datasets}])
+        data = concatenate_datasets(combined_datasets)
         return DatasetDict({"train": data})
     data = concatenate_datasets(
         list(load_dataset(dataset_name, cache_dir=cache_dir).values())
@@ -226,13 +216,49 @@ def _preprocess_dataset(dataset_name, data, sentence_col, tokenizer, cache_dir="
     preprocess_function = dataset_preprocess.get(dataset_name, lambda x: x)
     data = concate(dataset_name, data, cache_dir)
     data = data.map(lambda x: {"input_text": preprocess_function(x[sentence_col])})
-    data["train"] = data["train"].remove_columns(cols_removed[dataset_name])
+    data["train"] = data["train"].remove_columns(set(data['train'].features) - set(['input_text']))
+
+    logging.info(f"NP Concate")
     if dataset_name == "air_dialogue":
         data['train'] = Dataset.from_dict(
             {"input_text": np.concatenate(data["train"]["input_text"]).ravel().tolist()}
         )
+
+    if dataset_name == "air_dialogue" or dataset_name == "yahoo_answers_topics":
+        data['train'] = Dataset.from_dict(
+            {"input_text": data['train']['input_text'][:100000]}
+            )
+    elif dataset_name == "wikipedia" or dataset_name == "yelp_review_full":
+        data['train'] = Dataset.from_dict(
+            {"input_text": data['train']['input_text'][:200000]}
+            )
+
+    if dataset_name in split_para:
+        logging.info(f"Splitting Paragraphs")
+        data['train'] = Dataset.from_dict(
+            {"input_text": split_long_text(data['train']['input_text'])}
+            )
+        
+
+    logging.info(f"Normalize")
+    data = data.map(lambda x: {"input_text": normalize(x["input_text"])})
+    logging.info(f"Keep Sentence")
+    data = data.filter(lambda x: keep_sentence(x["input_text"]))
+    
+    now = datetime.now()
+    current_time = now.strftime("%H:%M:%S")
+    filename = f"{dataset_name}-full-text.out"
+    logging.info(f"Opening file {filename} to write results")    
+    with open(filename, "w") as outfile:
+        outfile.write("FULL TEXT BELOW\n")
+        for i, text in enumerate(data['train']["input_text"]):
+            outfile.write(f"{i} | {text}\n")
+
+    logging.info(f"Join")
+    data = data.map(lambda x: {"input_text": ' '.join(x["input_text"])})
+    logging.info(f"Tokenizer")
     data = data.map(
-        lambda x: tokenizer(x["input_text"], padding=True, truncation=True),
+        lambda x: tokenizer(x["input_text"], padding="max_length", truncation=True),
         batched=True,
     )
     return data
@@ -276,12 +302,16 @@ def train(model, encoded_dataset, tokenizer, run_output_dir, average_fscore_supp
     return trainer
 
 
-def make_chunks(data1, data2, chunk_size):
+def make_chunks(data1, data2, data3, chunk_size):
     while data1 and data2:
         chunk1, data1 = data1[:chunk_size], data1[chunk_size:]
         chunk2, data2 = data2[:chunk_size], data2[chunk_size:]
-        yield chunk1, chunk2
+        chunk3, data3 = data3[:chunk_size], data3[chunk_size:]
+        yield chunk1, chunk2, chunk3
 
+
+def collate_fn(examples):
+    return tokenizer.pad(examples, padding="max_length", truncation=True, return_tensors="pt")
 
 if __name__ == "__main__":
 
@@ -438,7 +468,7 @@ if __name__ == "__main__":
 
         logging.info(f"Tokenizing dataset column {TRAIN_FEATURES_COLUMN}")
         dataset = dataset.map(
-            lambda x: tokenizer(x[TRAIN_FEATURES_COLUMN], truncation=True, padding=True)
+            lambda x: tokenizer(x[TRAIN_FEATURES_COLUMN], truncation=True, padding="max_length")
         )
 
         logging.info(
@@ -474,8 +504,13 @@ if __name__ == "__main__":
             datasets_to_eval = dataset_cols.keys()
         else:
             datasets_to_eval = [EVALUATION_DATASET]
+
+        accelerator = Accelerator()
+
         for dataset_name in datasets_to_eval:
+            tokenized_dataset = f"{PICKLE_PATH[:-1]}{dataset_name}_tokenized.pkl"
             tot = loader(dataset_name, tokenizer, args.cache_dir)
+            DataFrame(tot).to_pickle(tokenized_dataset)
             for eval_dataset in tot:
                 torch.cuda.empty_cache()
                 current_dataset = eval_dataset["train"]
@@ -485,51 +520,62 @@ if __name__ == "__main__":
                 logging.info(pformat(torch.cuda.memory_stats(device=None)))
                 tokens_tensor = current_dataset["input_ids"]
                 token_type_ids = current_dataset["token_type_ids"]
+                attn_masks = current_dataset["attention_mask"]
                 logging.info("setting model")
                 eval_model.eval()
 
                 torch.cuda.empty_cache()
-                logging.info("evaluating")
+                
                 predictions = []
                 chunk = 0
-                logging.info("Opening file and writing")
                 now = datetime.now()
                 current_time = now.strftime("%H:%M:%S")
                 fname_model_prefix = args.model_input.replace("/", "_")
-                filename = (
-                    f"{current_time}-{dataset_name}-train-partial-predictions-eval.out"
-                )
-                logging.info(f"Opening file {filename} to write results")
-                with open(filename, "w") as outfile:
-                    outfile.write("PARTIAL PREDICTIONS BELOW\n")
-                    outfile.write(f"args: {args}\n")
-                    with torch.no_grad():
-                        start_time = time.time()
-                        for (
-                            tokens_tensor_chunk,
-                            token_type_ids_chunk,
-                        ) in make_chunks(tokens_tensor, token_type_ids, 1000):
-                            tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
-                            token_type_ids_chunk = torch.tensor(token_type_ids_chunk)
-                            outputs = eval_model(
-                                tokens_tensor_chunk,
-                                token_type_ids=token_type_ids_chunk,
-                            )
-                            predictions += outputs[0]
-                            logging.info(
-                                f"finished chunk {chunk} - total predictions = {len(predictions)}, writing predictions"
-                            )
-                            # output is [[123, 123, 123], [123, 123, 123]]
-                            for token_ids, preds in zip(
-                                token_type_ids_chunk, outputs[0]
-                            ):
-                                outfile.write(f"{tokens_tensor_chunk} | {preds}\n")
-                        end_time = time.time()
-                        logging.info(f"Time for evaluation {end_time - start_time}")
 
-                filename = f"{current_time}-{dataset_name}-train-eval.out"
+
+                start_time = time.time()
+                calculate_time = lambda: time.time() - start_time
+
+                with torch.no_grad():
+                    #start_time = time.time()
+                    for (
+                        tokens_tensor_chunk,
+                        token_type_ids_chunk,
+                        attn_masks_chunk,
+                    ) in make_chunks(tokens_tensor, token_type_ids, attn_masks, 1000):
+                        #calculate_time = lambda: time.time() - start_time
+                            
+                        logging.info(f"Tokens Tensor Chunk {calculate_time()}")
+                        tokens_tensor_chunk = torch.tensor(tokens_tensor_chunk)
+                        token_type_ids_chunk = torch.tensor(token_type_ids_chunk)
+                        attn_masks_chunk = torch.tensor(attn_masks_chunk)
+                            
+                        if USE_CUDA:
+                            tokens_tensor_chunk = tokens_tensor_chunk.to("cuda")
+                            token_type_ids_chunk = token_type_ids_chunk.to("cuda")
+                            attn_masks_chunk = attn_masks_chunk.to("cuda")
+
+                        logging.info(f"Eval Model {calculate_time()}")
+                        outputs = eval_model(
+                            tokens_tensor_chunk,
+                            token_type_ids=token_type_ids_chunk,
+                            attention_mask=attn_masks_chunk,
+                        )
+                        logging.info(f"Load Outputs into Predictions  {calculate_time()}")
+                        predictions += outputs[0]
+                        logging.info(
+                            f"finished chunk {chunk} - total predictions = {len(predictions)}, writing predictions"
+                        )
+                    end_time = time.time()
+                    logging.info(f"Time for evaluation {calculate_time()}")
+
+                filename = f"{args.model_input}-{current_time}-{dataset_name}-train-eval.out".replace("/", "-")
                 with open(filename, "w") as outfile:
                     outfile.write("FULL PREDICTIONS BELOW\n")
                     outfile.write(f"args: {args}\n")
                     for text, preds in zip(current_dataset["input_text"], predictions):
                         outfile.write(f"{text} | {preds}\n")
+
+
+
+
