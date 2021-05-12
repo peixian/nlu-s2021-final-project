@@ -47,6 +47,7 @@ def read_outfile(outfile_name, delimiter="|", skiprows=2, split_tensor=True):
         names=["sentence", "predictions"],
     )
     df = df.dropna()
+    df = df[df["sentence"].str.len() > 20]
     try:
         df["predictions"] = df["predictions"].apply(
             lambda x: x.replace("tensor(", "").replace(")", "").strip()
